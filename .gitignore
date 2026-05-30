@@ -1,0 +1,22 @@
+# --- User Configs ---
+config.json
+last_settings.json
+cookies.txt
+.cookie_key
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# --- OS generated files ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+logs/
+*.log
+
+# --- uv ---
+uv.lock
