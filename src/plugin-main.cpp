@@ -6,7 +6,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QByteArray>
-#include <QTimer>
 
 #include "bili-dock.h"
 #include "bilibili-api.h"
@@ -76,10 +75,15 @@ static void dock_unload()
     destroy_services();
 }
 
+static void ui_dock_load(void *)
+{
+    dock_load();
+}
+
 static void on_frontend_event(enum obs_frontend_event event, void *)
 {
     if (event == OBS_FRONTEND_EVENT_FINISHED_LOADING) {
-        QTimer::singleShot(0, dock_load);
+        obs_queue_task(OBS_TASK_UI, ui_dock_load, nullptr, false);
     }
     if (event == OBS_FRONTEND_EVENT_EXIT) {
         dock_unload();
