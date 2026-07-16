@@ -121,7 +121,7 @@ size_t BilibiliApi::header_cb(void *ptr, size_t size, size_t nmemb, void *userda
     std::string header(static_cast<char *>(ptr), size * nmemb);
     static const std::regex set_cookie_re("^set-cookie:\\s*([^=]+)=([^;]+)", std::regex_constants::icase);
     std::smatch m;
-    if (std::regex_match(header, m, set_cookie_re)) {
+    if (std::regex_search(header, m, set_cookie_re)) {
         (*cookies)[m[1]] = m[2];
     }
     return size * nmemb;
