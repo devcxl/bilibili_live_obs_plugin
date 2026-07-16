@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
             cmake ninja-build g++ pkg-config \
-            libobs-dev libobs-frontend-api-dev \
+            libobs-dev \
             qtbase5-dev \
             libcurl4-openssl-dev libqrencode-dev libssl-dev
 
@@ -54,24 +54,25 @@ jobs:
             base-devel cmake ninja git pkgconf \
             obs-studio qt5-base curl qrencode openssl
 
-      - name: build and package
+      - name: build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build
+
+      - name: package
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
-          sed -i "s/pkgver=.*/pkgver=${TAG}/" aur/PKGBUILD
-          useradd -m builder
-          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
-          chown -R builder:builder .
-          sudo -u builder bash -c '
-            export HOME=/home/builder
-            cd aur
-            makepkg -s --noconfirm
-          '
+          mkdir -p pkg/usr/lib/obs-plugins pkg/usr/share/obs/obs-plugins/bili-live-obs
+          cp build/libbili-live-obs.so pkg/usr/lib/obs-plugins/
+          cp -r data/locale pkg/usr/share/obs/obs-plugins/bili-live-obs/
+          cd pkg
+          tar -I 'zstd -c -T0' -cf "../bili-live-obs-${TAG}-1-x86_64.pkg.tar.zst" .
 
       - name: upload aur
         uses: actions/upload-artifact@v4
         with:
           name: bili-live-obs-aur
-          path: aur/bili-live-obs-*.pkg.tar.zst
+          path: bili-live-obs-*.pkg.tar.zst
 
   release:
     needs: [build-deb, build-aur]
