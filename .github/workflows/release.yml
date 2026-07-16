@@ -54,20 +54,18 @@ jobs:
             base-devel cmake ninja git pkgconf \
             obs-studio qt5-base curl qrencode openssl
 
-      - name: build
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
-          cmake --build build
-
-      - name: package
+      - name: build aur package
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
-          mkdir -p pkg/usr/lib/obs-plugins pkg/usr/share/obs/obs-plugins/bili-live-obs
-          cp build/libbili-live-obs.so pkg/usr/lib/obs-plugins/
-          cp -r data/locale pkg/usr/share/obs/obs-plugins/bili-live-obs/ 2>/dev/null || true
-          mkdir -p pkg/usr/share/obs/obs-plugins/bili-live-obs/locale
-          cd pkg
-          tar -I 'zstd -c -T0' -cf "../bili-live-obs-${TAG}-1-x86_64.pkg.tar.zst" .
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          cp aur/PKGBUILD .
+          sed -i "s/pkgver=.*/pkgver=${TAG}/" PKGBUILD
+          chown -R builder:builder .
+          sudo -u builder bash -c '
+            export HOME=/home/builder
+            makepkg -s --noconfirm
+          '
 
       - name: upload aur
         uses: actions/upload-artifact@v4
