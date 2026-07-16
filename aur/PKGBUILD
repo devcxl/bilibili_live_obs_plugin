@@ -1,0 +1,26 @@
+# Maintainer: BiliLiveOBS
+
+pkgname=bili-live-obs
+pkgver=3.0.0
+pkgrel=1
+pkgdesc="B站直播工具 OBS 插件 - 扫码登录/开播/停播/分区管理"
+arch=('x86_64')
+url="https://github.com/user/bili-live-obs"
+license=('MIT')
+depends=('obs-studio>=30.0' 'qt5-base' 'libcurl-gnutls' 'qrencode' 'openssl')
+makedepends=('cmake>=3.22' 'gcc' 'ninja' 'pkgconf')
+source=("${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  cmake -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  DESTDIR="${pkgdir}" cmake --install build
+}

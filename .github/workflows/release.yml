@@ -1,0 +1,91 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake ninja-build g++ pkg-config \
+            libobs-dev libobs-frontend-api-dev \
+            qtbase5-dev \
+            libcurl4-openssl-dev libqrencode-dev libssl-dev
+
+      - name: configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: build
+        run: cmake --build build
+
+      - name: package deb
+        run: |
+          cd build
+          cpack -G DEB
+
+      - name: upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: bili-live-obs-deb
+          path: build/bili-live-obs_*.deb
+
+  build-aur:
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install build tools
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel cmake ninja git pkgconf \
+            obs-studio qt5-base curl qrencode openssl
+
+      - name: build and package
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          sed -i "s/pkgver=.*/pkgver=${TAG}/" aur/PKGBUILD
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          chown -R builder:builder .
+          sudo -u builder bash -c '
+            export HOME=/home/builder
+            cd aur
+            makepkg -s --noconfirm
+          '
+
+      - name: upload aur
+        uses: actions/upload-artifact@v4
+        with:
+          name: bili-live-obs-aur
+          path: aur/bili-live-obs-*.pkg.tar.zst
+
+  release:
+    needs: [build-deb, build-aur]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bili-live-obs-*
+          merge-multiple: true
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.deb
+            *.pkg.tar.zst
+          generate_release_notes: true
