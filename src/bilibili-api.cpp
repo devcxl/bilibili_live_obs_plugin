@@ -448,7 +448,7 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
     if (!ts_res.ok || ts_res.code != 0)
         return ts_res;
 
-    std::string ts = std::to_string(ts_res.data["data"]["now"].get<int64_t>());
+    std::string ts = json_value_raw(ts_res.data["data"]["now"]);
 
     auto v_params = appsign(json{{"system_version", 2}, {"ts", ts}});
     auto v_res = do_get("https://api.live.bilibili.com/xlive/app-blink/v1/liveVersionInfo/getHomePageLiveVersion",

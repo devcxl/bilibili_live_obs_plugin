@@ -8,6 +8,15 @@
 
 // ── helpers ──
 
+static std::string json_to_string(const json &v)
+{
+    if (v.is_number())
+        return std::to_string(v.get<int64_t>());
+    if (v.is_string())
+        return v.get<std::string>();
+    return v.dump();
+}
+
 static std::string mask_string(const std::string &s, int head = 2, int tail = 2)
 {
     if (s.empty()) return "";
@@ -250,7 +259,7 @@ void LiveService::refresh_partitions()
         std::string pname = p["name"].get<std::string>();
         std::unordered_map<std::string, std::string> subs;
         for (auto &s : p["list"])
-            subs[s["name"].get<std::string>()] = std::to_string(s["id"].get<int>());
+            subs[s["name"].get<std::string>()] = json_to_string(s["id"]);
         partition_map_[pname] = subs;
     }
 }
