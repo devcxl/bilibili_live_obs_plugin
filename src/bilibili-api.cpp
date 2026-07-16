@@ -1,5 +1,7 @@
 #include "bilibili-api.h"
 
+#include <obs-module.h>
+
 #include <algorithm>
 #include <cstring>
 #include <regex>
@@ -446,17 +448,26 @@ ApiResult BilibiliApi::update_area(const std::string &room_id, const std::string
 
 ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string &area_id)
 {
+    blog(LOG_INFO, "[bili] start_live room=%s area=%s csrf=%s",
+         room_id.c_str(), area_id.c_str(), csrf_.substr(0, 4).c_str());
+
     auto ts_res = do_get("https://api.bilibili.com/x/report/click/now");
-    if (!ts_res.ok || ts_res.code != 0)
+    if (!ts_res.ok || ts_res.code != 0) {
+        blog(LOG_WARNING, "[bili] start_live: get_time failed code=%d msg=%s",
+             ts_res.code, ts_res.msg.c_str());
         return ts_res;
+    }
 
     std::string ts = json_value_raw(ts_res.data["data"]["now"]);
 
     auto v_params = appsign(json{{"system_version", 2}, {"ts", ts}});
     auto v_res = do_get("https://api.live.bilibili.com/xlive/app-blink/v1/liveVersionInfo/getHomePageLiveVersion",
                          v_params);
-    if (!v_res.ok || v_res.code != 0)
+    if (!v_res.ok || v_res.code != 0) {
+        blog(LOG_WARNING, "[bili] start_live: get_version failed code=%d msg=%s",
+             v_res.code, v_res.msg.c_str());
         return v_res;
+    }
 
     json post_data = appsign(json{
         {"room_id", room_id}, {"platform", "pc_link"},
@@ -466,7 +477,10 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
         {"version", v_res.data["data"]["curr_version"]},
         {"ts", ts}
     });
-    return do_post("https://api.live.bilibili.com/room/v1/Room/startLive", post_data);
+    auto result = do_post("https://api.live.bilibili.com/room/v1/Room/startLive", post_data);
+    blog(LOG_INFO, "[bili] start_live result: ok=%d code=%d msg=%s",
+         result.ok, result.code, result.msg.c_str());
+    return result;
 }
 
 ApiResult BilibiliApi::stop_live(const std::string &room_id)
