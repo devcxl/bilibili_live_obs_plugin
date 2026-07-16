@@ -64,7 +64,8 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/v}
           mkdir -p pkg/usr/lib/obs-plugins pkg/usr/share/obs/obs-plugins/bili-live-obs
           cp build/libbili-live-obs.so pkg/usr/lib/obs-plugins/
-          cp -r data/locale pkg/usr/share/obs/obs-plugins/bili-live-obs/
+          cp -r data/locale pkg/usr/share/obs/obs-plugins/bili-live-obs/ 2>/dev/null || true
+          mkdir -p pkg/usr/share/obs/obs-plugins/bili-live-obs/locale
           cd pkg
           tar -I 'zstd -c -T0' -cf "../bili-live-obs-${TAG}-1-x86_64.pkg.tar.zst" .
 

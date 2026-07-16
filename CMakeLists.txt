@@ -81,6 +81,7 @@ install(TARGETS bili-live-obs
 
 install(DIRECTORY data/
   DESTINATION "${CMAKE_INSTALL_PREFIX}/share/obs/obs-plugins/${CMAKE_PROJECT_NAME}"
+  OPTIONAL
 )
 
 # ---- CPack / DEB ----
