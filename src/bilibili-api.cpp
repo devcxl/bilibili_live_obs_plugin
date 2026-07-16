@@ -27,6 +27,13 @@ const int BilibiliApi::MIXIN_KEY_ENC_TAB[64] = {
 
 // ── helpers ──
 
+static std::string json_value_raw(const json &v)
+{
+    if (v.is_string())
+        return v.get<std::string>();
+    return v.dump();
+}
+
 static std::string md5_hex(const std::string &in)
 {
     unsigned char hash[MD5_DIGEST_LENGTH];
@@ -135,7 +142,7 @@ std::string BilibiliApi::build_query(const json &params) const
     std::string qs;
     for (auto it = params.begin(); it != params.end(); ++it) {
         if (!qs.empty()) qs += "&";
-        qs += url_encode(it.key()) + "=" + url_encode(it.value().dump());
+        qs += url_encode(it.key()) + "=" + url_encode(json_value_raw(it.value()));
     }
     return qs;
 }
@@ -237,6 +244,7 @@ ApiResult BilibiliApi::do_request(const std::string &method, const std::string &
     curl_slist_free_all(headers);
 
     if (cc != CURLE_OK) {
+        res.code = -1;
         res.msg = curl_easy_strerror(cc);
         return res;
     }

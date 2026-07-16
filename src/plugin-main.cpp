@@ -64,10 +64,14 @@ static void dock_load()
         "bili_live_dock",
         "B站直播工具",
         s_dock);
+
+    // 恢复直播中状态
+    s_live->check_live_status();
 }
 
 static void dock_unload()
 {
+    if (s_cfg) s_cfg->save();
     if (s_dock) {
         delete s_dock;
         s_dock = nullptr;
