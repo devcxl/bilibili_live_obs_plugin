@@ -13,8 +13,8 @@ set(CMAKE_AUTOMOC ON)
 find_package(libobs REQUIRED)
 find_package(obs-frontend-api REQUIRED)
 
-# ---- Qt5 ----
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Network)
+# ---- Qt6 ----
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 # ---- system libs ----
 find_package(PkgConfig REQUIRED)
@@ -57,7 +57,7 @@ target_include_directories(bili-live-obs PRIVATE
 target_link_libraries(bili-live-obs PRIVATE
   OBS::libobs
   OBS::obs-frontend-api
-  Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network
+  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network
   ${LIBCURL_LIBRARIES}
   ${LIBQRENCODE_LIBRARIES}
   ${OPENSSL_LIBRARIES}
@@ -93,7 +93,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "B站直播工具 OBS 插件 - 扫码登�
 set(CPACK_PACKAGE_CONTACT "https://github.com/${GITHUB_REPOSITORY}")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "BiliLiveOBS")
 set(CPACK_DEBIAN_PACKAGE_SECTION "video")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "obs-studio (>= 30.0), libqt5widgets5, libqt5network5, libcurl4, libqrencode4, libssl3")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "obs-studio (>= 30.0), libqt6widgets6, libqt6network6, libcurl4, libqrencode4, libssl3")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
 set(CPACK_GENERATOR "DEB")
 set(CPACK_DEB_COMPONENT_INSTALL ON)
