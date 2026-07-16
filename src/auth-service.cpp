@@ -150,10 +150,15 @@ std::string UserService::fetch_room_id(const std::unordered_map<std::string, std
     if (uid_it != cookies_dict.end()) {
         auto res = api_->get_room_id_by_uid(uid_it->second);
         if (res.ok) {
-            if (res.code == 0 && res.data.contains("data"))
-                return res.data["data"]["room_id"].dump();
+            if (res.code == 0 && res.data.contains("data")) {
+                auto &room_id_val = res.data["data"]["room_id"];
+                if (room_id_val.is_number())
+                    return std::to_string(room_id_val.get<uint64_t>());
+                if (room_id_val.is_string() && !room_id_val.get<std::string>().empty())
+                    return room_id_val.get<std::string>();
+            }
             if (res.code == 404)
-                return ""; // no room
+                return "";
         }
     }
 
@@ -161,8 +166,13 @@ std::string UserService::fetch_room_id(const std::unordered_map<std::string, std
     if (nav.ok && nav.code == 0) {
         auto live_room = nav.data["data"]["live_room"];
         if (!live_room.is_null()) {
-            std::string rid = live_room.value("roomid", "0");
-            if (rid != "0") return rid;
+            auto &rid_val = live_room["roomid"];
+            std::string rid;
+            if (rid_val.is_number())
+                rid = std::to_string(rid_val.get<uint64_t>());
+            else if (rid_val.is_string())
+                rid = rid_val.get<std::string>();
+            if (!rid.empty() && rid != "0") return rid;
         }
     }
     return "";
