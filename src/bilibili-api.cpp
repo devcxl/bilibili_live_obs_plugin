@@ -230,7 +230,9 @@ ApiResult BilibiliApi::do_request(const std::string &method, const std::string &
         } else {
             curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, "");
         }
-        curl_slist_append(headers, "content-type: application/x-www-form-urlencoded; charset=UTF-8");
+        headers = curl_slist_append(headers, "content-type: application/x-www-form-urlencoded; charset=UTF-8");
+    } else {
+        curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);
     }
 
     // Cookies
