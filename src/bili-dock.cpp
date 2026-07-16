@@ -360,7 +360,8 @@ void BiliDock::refresh_account_list()
     for (auto &acc : accounts) {
         QString label = QString("%1 (Lv.%2)")
             .arg(QString::fromStdString(acc["uname"].get<std::string>()))
-            .arg(std::stoi(json_value_raw(acc["level"])));
+            .arg(QString::fromStdString(
+                acc["level"].is_string() ? acc["level"].get<std::string>() : std::to_string(acc["level"].get<int64_t>())));
         account_combo_->addItem(label, QString::fromStdString(acc["uid"].get<std::string>()));
         if (acc["uid"].get<std::string>() == current_uid)
             account_combo_->setCurrentIndex(account_combo_->count() - 1);
