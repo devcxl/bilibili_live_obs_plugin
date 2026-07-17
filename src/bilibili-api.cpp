@@ -152,17 +152,7 @@ std::string BilibiliApi::build_query(const json &params) const
 json BilibiliApi::appsign(json params) const
 {
     params["appkey"] = APP_KEY;
-    // sort keys
-    std::vector<std::string> keys;
-    for (auto it = params.begin(); it != params.end(); ++it)
-        keys.push_back(it.key());
-    std::sort(keys.begin(), keys.end());
-
-    std::string qs;
-    for (auto &k : keys) {
-        if (!qs.empty()) qs += "&";
-        qs += k + "=" + url_encode(params[k].dump());
-    }
+    std::string qs = build_query(params);
     params["sign"] = md5_hex(qs + APP_SEC);
     return params;
 }
@@ -199,6 +189,7 @@ ApiResult BilibiliApi::do_request(const std::string &method, const std::string &
     }
 
     std::string response_body;
+    std::string postdata;
     std::unordered_map<std::string, std::string> resp_cookies;
 
     // Build URL with params
@@ -224,7 +215,6 @@ ApiResult BilibiliApi::do_request(const std::string &method, const std::string &
     headers = curl_slist_append(headers, "referer: https://www.bilibili.com/");
 
     if (method == "POST") {
-        std::string postdata;
         if (!data.is_null()) {
             postdata = build_query(data);
             curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, postdata.c_str());
@@ -448,8 +438,8 @@ ApiResult BilibiliApi::update_area(const std::string &room_id, const std::string
 
 ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string &area_id)
 {
-    blog(LOG_INFO, "[bili] start_live room=%s area=%s csrf=%s",
-         room_id.c_str(), area_id.c_str(), csrf_.substr(0, 4).c_str());
+    blog(LOG_INFO, "[bili] start_live room=%s area=%s",
+         room_id.c_str(), area_id.c_str());
 
     auto ts_res = do_get("https://api.bilibili.com/x/report/click/now");
     if (!ts_res.ok || ts_res.code != 0) {
@@ -477,8 +467,6 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
         {"version", v_res.data["data"]["curr_version"]},
         {"ts", ts}
     });
-    std::string body = build_query(post_data);
-    blog(LOG_INFO, "[bili] start_live POST body: %s", body.c_str());
     auto result = do_post("https://api.live.bilibili.com/room/v1/Room/startLive", post_data);
     blog(LOG_INFO, "[bili] start_live result: ok=%d code=%d msg=%s",
          result.ok, result.code, result.msg.c_str());
