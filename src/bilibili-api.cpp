@@ -477,6 +477,8 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
         {"version", v_res.data["data"]["curr_version"]},
         {"ts", ts}
     });
+    std::string body = build_query(post_data);
+    blog(LOG_INFO, "[bili] start_live POST body: %s", body.c_str());
     auto result = do_post("https://api.live.bilibili.com/room/v1/Room/startLive", post_data);
     blog(LOG_INFO, "[bili] start_live result: ok=%d code=%d msg=%s",
          result.ok, result.code, result.msg.c_str());
