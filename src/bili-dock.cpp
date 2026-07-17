@@ -96,11 +96,26 @@ void BiliDock::init_ui()
     login_status_->hide();
     login_layout->addWidget(login_status_);
 
+    auto *user_row = new QHBoxLayout();
+    user_face_label_ = new QLabel();
+    user_face_label_->setFixedSize(48, 48);
+    user_face_label_->setStyleSheet("background:#2d2d2d;border:1px solid #444;border-radius:24px");
+    user_face_label_->setScaledContents(true);
+    user_face_label_->hide();
+    user_row->addWidget(user_face_label_);
+
+    auto *user_col = new QVBoxLayout();
     user_info_label_ = new QLabel();
-    user_info_label_->setAlignment(Qt::AlignCenter);
     user_info_label_->setStyleSheet("color:#FFB74D;font-size:13px;font-weight:bold");
     user_info_label_->hide();
-    login_layout->addWidget(user_info_label_);
+    user_col->addWidget(user_info_label_);
+    user_detail_label_ = new QLabel();
+    user_detail_label_->setStyleSheet("color:#888;font-size:11px");
+    user_detail_label_->hide();
+    user_col->addWidget(user_detail_label_);
+    user_row->addLayout(user_col);
+    user_row->addStretch();
+    login_layout->addLayout(user_row);
 
     auto *acc_row = new QHBoxLayout();
     account_combo_ = new QComboBox();
@@ -138,6 +153,7 @@ void BiliDock::init_ui()
     title_row->addWidget(new QLabel("标题:"));
     title_edit_ = new QLineEdit();
     title_edit_->setPlaceholderText("输入直播标题...");
+    connect(title_edit_, &QLineEdit::editingFinished, this, &BiliDock::on_title_edited);
     title_row->addWidget(title_edit_);
     stream_layout->addLayout(title_row);
 
@@ -148,6 +164,7 @@ void BiliDock::init_ui()
     area_row->addWidget(parent_combo_);
     sub_combo_ = new QComboBox();
     sub_combo_->setPlaceholderText("子分区");
+    connect(sub_combo_, &QComboBox::currentTextChanged, this, &BiliDock::on_sub_area_changed);
     area_row->addWidget(sub_combo_);
     stream_layout->addLayout(area_row);
 
@@ -277,22 +294,70 @@ void BiliDock::on_login_done(const QJsonObject &data)
 {
     hide_login_ui();
     verify_group_->hide();
-    user_info_label_->setText(
-        QString("%1  Lv.%2")
-            .arg(data["uname"].toString())
-            .arg(data["level"].toInt()));
-    user_info_label_->show();
+    update_user_display(data);
     refresh_account_list();
     load_partitions();
-    title_edit_->setText(data["last_title"].toString());
     btn_start_->show();
 
+    restoring_ = true;
+    title_edit_->setText(data["last_title"].toString());
     auto names = data["last_area_name"].toArray();
     if (names.size() >= 1)
         parent_combo_->setCurrentText(names[0].toString());
     if (names.size() >= 2)
         sub_combo_->setCurrentText(names[1].toString());
+    restoring_ = false;
+
     status_bar_->setText("已登录 — 就绪");
+}
+
+static QString format_count(qint64 n)
+{
+    if (n >= 10000)
+        return QString::number(n / 10000.0, 'f', 1) + "万";
+    return QString::number(n);
+}
+
+void BiliDock::update_user_display(const QJsonObject &data)
+{
+    user_info_label_->setText(
+        QString("%1  Lv.%2")
+            .arg(data["uname"].toString())
+            .arg(data["level"].toInt()));
+    user_info_label_->show();
+
+    user_detail_label_->setText(
+        QString("UID: %1  |  房间: %2\n关注 %3 · 粉丝 %4  |  硬币 %5 · B币 %6")
+            .arg(data["uid"].toString())
+            .arg(data["roomId"].toString())
+            .arg(format_count(data["following"].toInt()))
+            .arg(format_count(data["follower"].toInt()))
+            .arg(format_count(data["money"].toInt()))
+            .arg(data["bcoin"].toInt()));
+    user_detail_label_->show();
+
+    QString face = data["face"].toString();
+    if (!face.isEmpty()) {
+        QNetworkRequest req{QUrl(face)};
+        req.setRawHeader("Referer", "https://www.bilibili.com/");
+        auto *reply = net_->get(req);
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+            on_face_reply(reply);
+        });
+    }
+}
+
+void BiliDock::on_face_reply(QNetworkReply *reply)
+{
+    reply->deleteLater();
+    if (reply->error() != QNetworkReply::NoError) return;
+
+    QPixmap pix;
+    pix.loadFromData(reply->readAll());
+    if (pix.isNull()) return;
+
+    user_face_label_->setPixmap(pix.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    user_face_label_->show();
 }
 
 void BiliDock::set_login_error(const QString &msg)
@@ -340,6 +405,10 @@ void BiliDock::set_logged_out()
     btn_copy_code_->hide();
     rtmp_srt_label_->hide();
     verify_group_->hide();
+    user_face_label_->hide();
+    user_face_label_->clear();
+    user_info_label_->hide();
+    user_detail_label_->hide();
     parent_combo_->clear();
     sub_combo_->clear();
     title_edit_->clear();
@@ -395,7 +464,6 @@ void BiliDock::do_logout()
     user_->logout(uid.toStdString());
     account_combo_->hide();
     btn_logout_->hide();
-    user_info_label_->hide();
     set_logged_out();
     btn_login_->show();
     status_bar_->setText("已登出");
@@ -438,6 +506,34 @@ void BiliDock::on_parent_area_changed(const QString &name)
         }
     }
     sub_combo_->blockSignals(false);
+}
+
+void BiliDock::on_sub_area_changed(const QString &name)
+{
+    if (restoring_ || name.isEmpty() || !live_) return;
+    auto parent = parent_combo_->currentText();
+    if (parent.isEmpty()) return;
+
+    auto result = live_->update_area(parent.toStdString(), name.toStdString());
+    if (result["code"] == 0)
+        status_bar_->setText(QString("分区已更新: %1 / %2").arg(parent, name));
+    else
+        status_bar_->setText(
+            QString("分区更新失败: %1").arg(QString::fromStdString(result.value("msg", ""))));
+}
+
+void BiliDock::on_title_edited()
+{
+    if (restoring_ || !live_) return;
+    auto title = title_edit_->text();
+    if (title.isEmpty()) return;
+
+    auto result = live_->update_title(title.toStdString());
+    if (result["code"] == 0)
+        status_bar_->setText("标题已更新");
+    else
+        status_bar_->setText(
+            QString("标题更新失败: %1").arg(QString::fromStdString(result.value("msg", ""))));
 }
 
 // ── Stream control ──

@@ -9,6 +9,7 @@
 #include <QVBoxLayout>
 #include <QGroupBox>
 #include <QNetworkAccessManager>
+#include <QNetworkReply>
 
 #include "bilibili-api.h"
 #include "config-manager.h"
@@ -33,6 +34,9 @@ private slots:
     void on_account_changed(int idx);
     void do_logout();
     void on_parent_area_changed(const QString &name);
+    void on_sub_area_changed(const QString &name);
+    void on_title_edited();
+    void on_face_reply(QNetworkReply *reply);
     void do_start_live();
     void do_stop_live();
 
@@ -45,6 +49,7 @@ private:
     void show_verify_qr(const QString &url);
     void refresh_account_list();
     void load_partitions();
+    void update_user_display(const QJsonObject &data);
 
     AuthService *auth_ = nullptr;
     LiveService *live_ = nullptr;
@@ -61,7 +66,9 @@ private:
     QPushButton *btn_login_;
     QLabel *login_qr_;
     QLabel *login_status_;
+    QLabel *user_face_label_;
     QLabel *user_info_label_;
+    QLabel *user_detail_label_;
     QComboBox *account_combo_;
     QPushButton *btn_logout_;
 
@@ -87,4 +94,5 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> partition_cache_;
     std::string rtmp_addr_;
     std::string rtmp_code_;
+    bool restoring_ = false;
 };
