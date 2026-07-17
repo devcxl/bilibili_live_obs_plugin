@@ -208,7 +208,10 @@ std::string ConfigManager::decrypt(const std::string &cipher) const
 
     auto raw = base64_decode(cipher);
     // legacy plain cookie check: 版本字节 0x80 在解码后的 payload 首字节
-    if (raw.size() < 1 + IV_LEN + 32 || raw[0] != 0x80) return cipher;
+    if (raw.size() < 1 + IV_LEN + 32 || raw[0] != 0x80) {
+        // 不是加密格式 → 视为 legacy 明文 cookie，原样返回
+        return cipher;
+    }
 
     auto derived = derive_key(key_);
     const unsigned char *enc_key = derived.data();
@@ -221,7 +224,7 @@ std::string ConfigManager::decrypt(const std::string &cipher) const
     HMAC(EVP_sha256(), hmac_key, HMAC_KEY_LEN,
          raw.data(), hmac_start, computed, &hlen);
     if (hlen != 32 || memcmp(computed, raw.data() + hmac_start, 32) != 0)
-        return cipher;
+        return "";
 
     const unsigned char *iv = raw.data() + 1;
     const unsigned char *enc = raw.data() + 1 + IV_LEN;
@@ -233,10 +236,12 @@ std::string ConfigManager::decrypt(const std::string &cipher) const
     std::vector<unsigned char> plain(enclen + 16);
     int outlen = 0, tmplen = 0;
     EVP_DecryptUpdate(ctx, plain.data(), &outlen, enc, enclen);
-    EVP_DecryptFinal_ex(ctx, plain.data() + outlen, &tmplen);
+    int final_ok = EVP_DecryptFinal_ex(ctx, plain.data() + outlen, &tmplen);
     outlen += tmplen;
     plain.resize(outlen);
     EVP_CIPHER_CTX_free(ctx);
+
+    if (final_ok <= 0) return "";
 
     return std::string(reinterpret_cast<char *>(plain.data()), plain.size());
 }

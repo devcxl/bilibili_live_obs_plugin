@@ -1,5 +1,7 @@
 #include "auth-service.h"
 
+#include <obs-module.h>
+
 #include <regex>
 #include <sstream>
 #include <iomanip>
@@ -47,20 +49,30 @@ json UserService::strip_sensitive(const json &data)
     return j;
 }
 
+bool UserService::has_valid_session() const
+{
+    return !state_->room_id.empty() && !state_->csrf.empty();
+}
+
 void UserService::init_current_user()
 {
     auto uid = cfg_->current_uid;
     if (uid.empty()) {
+        blog(LOG_INFO, "[bili] init_current_user: no current_uid");
         state_->clear();
         return;
     }
     auto it = cfg_->users.find(uid);
     if (it == cfg_->users.end()) {
+        blog(LOG_WARNING, "[bili] init_current_user: uid=%s not in users", uid.c_str());
         state_->clear();
         return;
     }
 
     auto &u = it->second;
+    blog(LOG_INFO, "[bili] init_current_user: uid=%s cookie_len=%zu csrf=%s",
+         uid.c_str(), u.cookie.size(), u.csrf.empty() ? "(empty)" : u.csrf.substr(0, 4).c_str());
+
     state_->clear();
 
     // parse cookies
@@ -81,6 +93,13 @@ void UserService::init_current_user()
         }
     }
 
+    if (cookies.find("SESSDATA") == cookies.end()) {
+        blog(LOG_WARNING, "[bili] init_current_user: SESSDATA not found in cookie, login invalid");
+        api_->update_cookies({});
+        return;
+    }
+
+    blog(LOG_INFO, "[bili] init_current_user: parsed %zu cookies, SESSDATA ok", cookies.size());
     api_->update_cookies(cookies);
     state_->uid = uid;
     state_->room_id = u.roomId;
@@ -93,6 +112,10 @@ json UserService::save_user_data(const std::string &uid, const json &full_data,
                                   const std::string &cookie_str, const std::string &room_id,
                                   const std::string &csrf)
 {
+    blog(LOG_INFO, "[bili] save_user_data: uid=%s cookie_len=%zu room=%s csrf=%s",
+         uid.c_str(), cookie_str.size(), room_id.c_str(),
+         csrf.empty() ? "(empty)" : csrf.substr(0, 4).c_str());
+
     auto &users = cfg_->users;
     auto old_it = users.find(uid);
     UserData old_data;
@@ -489,6 +512,13 @@ json AuthService::poll_login_status(const std::string &key)
         state_->clear();
         api_->update_cookies(res.response_cookies);
 
+        blog(LOG_INFO, "[bili] poll_login_status: login ok, %zu response cookies",
+             res.response_cookies.size());
+        for (auto &[k, v] : res.response_cookies) {
+            blog(LOG_INFO, "[bili]   cookie: %s=%s...", k.c_str(),
+                 v.size() > 8 ? v.substr(0, 8).c_str() : v.c_str());
+        }
+
         std::string csrf;
         auto jct_it = res.response_cookies.find("bili_jct");
         if (jct_it != res.response_cookies.end()) csrf = jct_it->second;
@@ -506,6 +536,7 @@ json AuthService::poll_login_status(const std::string &key)
             return json{{"code", -1}, {"msg", "无法获取用户ID"}};
 
         std::string cookie_str = cookies_to_str(res.response_cookies);
+        blog(LOG_INFO, "[bili] poll_login_status: cookie_str_len=%zu", cookie_str.size());
         auto saved = user_svc_->save_user_data(uid_it->second, full_result["data"],
                                                 cookie_str, room_id, csrf);
         live_svc_->refresh_partitions();

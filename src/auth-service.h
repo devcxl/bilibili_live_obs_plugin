@@ -31,6 +31,7 @@ public:
     UserService(BilibiliApi *api, ConfigManager *cfg, SessionState *state);
 
     void init_current_user();
+    bool has_valid_session() const;
     json save_user_data(const std::string &uid, const json &full_data,
                         const std::string &cookie_str, const std::string &room_id,
                         const std::string &csrf);

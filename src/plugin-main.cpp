@@ -33,6 +33,13 @@ static void init_services()
     s_live = new LiveService(s_api, s_cfg, s_state);
     s_auth = new AuthService(s_api, s_user, s_live, s_state);
     s_user->init_current_user();
+
+    if (s_user->has_valid_session()) {
+        blog(LOG_INFO, "[bili] session restored, uid=%s room=%s",
+             s_state->uid.c_str(), s_state->room_id.c_str());
+    } else {
+        blog(LOG_WARNING, "[bili] no valid session, need re-login");
+    }
 }
 
 static void destroy_services()
@@ -53,11 +60,15 @@ static void dock_load()
     s_dock = new BiliDock(main);
     s_dock->set_services(s_auth, s_live, s_user, s_cfg);
 
-    auto saved = s_user->load_saved_config();
-    if (saved["code"] == 0 && !saved["data"].is_null() && !saved["data"].empty()) {
-        auto data = saved["data"];
-        s_dock->on_login_done(
-            QJsonDocument::fromJson(QByteArray::fromStdString(data.dump())).object());
+    if (s_user->has_valid_session()) {
+        auto saved = s_user->load_saved_config();
+        if (saved["code"] == 0 && !saved["data"].is_null() && !saved["data"].empty()) {
+            auto data = saved["data"];
+            s_dock->on_login_done(
+                QJsonDocument::fromJson(QByteArray::fromStdString(data.dump())).object());
+        }
+    } else {
+        blog(LOG_WARNING, "[bili] no valid session on startup, showing login UI");
     }
 
     obs_frontend_add_dock_by_id(
