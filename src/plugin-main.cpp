@@ -100,6 +100,12 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
     if (event == OBS_FRONTEND_EVENT_FINISHED_LOADING) {
         obs_queue_task(OBS_TASK_UI, ui_dock_load, nullptr, false);
     }
+    if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED && s_dock) {
+        s_dock->on_obs_streaming_started();
+    }
+    if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED && s_dock) {
+        s_dock->on_obs_streaming_stopped();
+    }
     if (event == OBS_FRONTEND_EVENT_EXIT) {
         dock_unload();
     }

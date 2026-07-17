@@ -12,6 +12,8 @@
 #include <QBuffer>
 #include <QDebug>
 
+#include <obs-frontend-api.h>
+#include <obs-module.h>
 #include <qrencode.h>
 
 // ── QR pixmap generator (local, no network) ──
@@ -55,6 +57,11 @@ BiliDock::BiliDock(QWidget *parent)
     init_ui();
 }
 
+BiliDock::~BiliDock()
+{
+    restore_obs_stream_service();
+}
+
 void BiliDock::set_services(AuthService *auth, LiveService *live,
                              UserService *user, ConfigManager *cfg)
 {
@@ -62,6 +69,64 @@ void BiliDock::set_services(AuthService *auth, LiveService *live,
     live_ = live;
     user_ = user;
     cfg_ = cfg;
+}
+
+bool BiliDock::configure_obs_stream(const std::string &server, const std::string &key)
+{
+    if (server.empty() || key.empty() || previous_obs_service_) return false;
+
+    obs_service_t *current = obs_frontend_get_streaming_service();
+    previous_obs_service_ = current ? obs_service_get_ref(current) : nullptr;
+
+    obs_data_t *settings = obs_data_create();
+    obs_data_set_string(settings, "server", server.c_str());
+    obs_data_set_string(settings, "key", key.c_str());
+
+    obs_service_t *service = obs_service_create(
+        "rtmp_custom", "bili-live-obs-service", settings, nullptr);
+    obs_data_release(settings);
+    if (!service) {
+        obs_service_release(previous_obs_service_);
+        previous_obs_service_ = nullptr;
+        return false;
+    }
+
+    obs_frontend_set_streaming_service(service);
+    obs_frontend_save_streaming_service();
+    obs_service_release(service);
+    return true;
+}
+
+void BiliDock::restore_obs_stream_service()
+{
+    if (!previous_obs_service_) return;
+
+    obs_frontend_set_streaming_service(previous_obs_service_);
+    obs_frontend_save_streaming_service();
+    obs_service_release(previous_obs_service_);
+    previous_obs_service_ = nullptr;
+    restore_obs_service_pending_ = false;
+}
+
+void BiliDock::on_obs_streaming_started()
+{
+    if (!bili_live_started_) return;
+    stream_status_->setText("直播中 — OBS 推流已启动");
+    stream_status_->setStyleSheet("color:#81C784;font-size:12px");
+    status_bar_->setText("B站直播与 OBS 推流均已启动");
+}
+
+void BiliDock::on_obs_streaming_stopped()
+{
+    if (restore_obs_service_pending_) {
+        restore_obs_stream_service();
+        btn_start_->setEnabled(true);
+    }
+
+    if (!bili_live_started_) return;
+    stream_status_->setText("OBS 推流已停止，B站直播仍可能开启");
+    stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
+    status_bar_->setText("请点击停止直播关闭 B站直播间");
 }
 
 void BiliDock::init_ui()
@@ -541,6 +606,25 @@ void BiliDock::on_title_edited()
 void BiliDock::do_start_live()
 {
     if (!live_) return;
+    if (restore_obs_service_pending_) {
+        stream_status_->setText("正在停止上一轮 OBS 推流，请稍候");
+        stream_status_->setStyleSheet("color:#FFB74D;font-size:12px");
+        stream_status_->show();
+        return;
+    }
+    if (bili_live_started_) {
+        stream_status_->setText("B站直播已开启，请先停止当前直播");
+        stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
+        stream_status_->show();
+        return;
+    }
+    if (obs_frontend_streaming_active()) {
+        stream_status_->setText("OBS 已在推流，请先停止当前直播");
+        stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
+        stream_status_->show();
+        return;
+    }
+
     btn_start_->setEnabled(false);
     stream_status_->setText("正在开播...");
     stream_status_->show();
@@ -559,6 +643,28 @@ void BiliDock::do_start_live()
 
         rtmp_addr_ = rtmp1["addr"].get<std::string>();
         rtmp_code_ = rtmp1["code"].get<std::string>();
+
+        if (!configure_obs_stream(rtmp_addr_, rtmp_code_)) {
+            auto rollback = live_->stop_live();
+            bili_live_started_ = rollback["code"] != 0;
+            stream_status_->setText(
+                rollback["code"] == 0
+                    ? "OBS 推流配置失败，已回滚 B站开播"
+                    : "OBS 推流配置失败，且 B站开播回滚失败，请手动停播");
+            stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
+            status_bar_->setText("自动配置 OBS 失败");
+            if (bili_live_started_) {
+                btn_start_->hide();
+                btn_stop_->show();
+            }
+            btn_start_->setEnabled(true);
+            return;
+        }
+
+        bili_live_started_ = true;
+        QTimer::singleShot(0, this, []() {
+            obs_frontend_streaming_start();
+        });
 
         rtmp_addr_label_->setText(QString("RTMP 地址: %1").arg(QString::fromStdString(rtmp_addr_)));
         rtmp_addr_label_->show();
@@ -584,9 +690,9 @@ void BiliDock::do_start_live()
 
         btn_start_->hide();
         btn_stop_->show();
-        stream_status_->setText("直播中");
+        stream_status_->setText("B站已开播 — 等待 OBS 推流启动");
         stream_status_->setStyleSheet("color:#81C784;font-size:12px");
-        status_bar_->setText("直播已开启 — 配置 OBS 推流");
+        status_bar_->setText("直播已开启 — OBS 推流已自动配置");
 
     } else if (result["code"] == 60024 || result["code"] == 60043) {
         QString qr = QString::fromStdString(result.value("qr", ""));
@@ -607,8 +713,17 @@ void BiliDock::do_stop_live()
     if (!live_) return;
     auto result = live_->stop_live();
     if (result["code"] == 0) {
+        bili_live_started_ = false;
+        if (obs_frontend_streaming_active()) {
+            restore_obs_service_pending_ = true;
+            obs_frontend_streaming_stop();
+        } else {
+            restore_obs_stream_service();
+        }
+
         btn_stop_->hide();
         btn_start_->show();
+        btn_start_->setEnabled(!restore_obs_service_pending_);
         stream_status_->setText("已停止直播");
         stream_status_->setStyleSheet("color:#888;font-size:12px");
         rtmp_addr_label_->hide();
@@ -617,5 +732,8 @@ void BiliDock::do_stop_live()
         btn_copy_code_->hide();
         rtmp_srt_label_->hide();
         status_bar_->setText("直播已停止");
+    } else {
+        stream_status_->setText("B站停播失败，请重试");
+        stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
     }
 }

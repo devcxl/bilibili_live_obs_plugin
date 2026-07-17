@@ -10,6 +10,7 @@
 #include <QGroupBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <obs.h>
 
 #include "bilibili-api.h"
 #include "config-manager.h"
@@ -20,13 +21,15 @@ class BiliDock : public QWidget {
 
 public:
     explicit BiliDock(QWidget *parent = nullptr);
-    ~BiliDock() override = default;
+    ~BiliDock() override;
 
     void set_services(AuthService *auth, LiveService *live,
                       UserService *user, ConfigManager *cfg);
 
 public slots:
     void on_login_done(const QJsonObject &data);
+    void on_obs_streaming_started();
+    void on_obs_streaming_stopped();
 
 private slots:
     void start_login();
@@ -50,6 +53,8 @@ private:
     void refresh_account_list();
     void load_partitions();
     void update_user_display(const QJsonObject &data);
+    bool configure_obs_stream(const std::string &server, const std::string &key);
+    void restore_obs_stream_service();
 
     AuthService *auth_ = nullptr;
     LiveService *live_ = nullptr;
@@ -95,4 +100,7 @@ private:
     std::string rtmp_addr_;
     std::string rtmp_code_;
     bool restoring_ = false;
+    bool bili_live_started_ = false;
+    bool restore_obs_service_pending_ = false;
+    obs_service_t *previous_obs_service_ = nullptr;
 };
