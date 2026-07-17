@@ -70,6 +70,7 @@ json UserData::to_json() const
 {
     return {
         {"uid", uid}, {"uname", uname}, {"face", face},
+        {"cookie", cookie},
         {"roomId", roomId}, {"csrf", csrf},
         {"level", level}, {"current_exp", current_exp},
         {"next_exp", next_exp}, {"money", money},
@@ -204,15 +205,14 @@ std::string ConfigManager::encrypt(const std::string &plain) const
 std::string ConfigManager::decrypt(const std::string &cipher) const
 {
     if (cipher.empty()) return "";
-    // legacy plain cookie check
-    if (cipher.size() < 4 || cipher[0] != (char)0x80) return cipher;
+
+    auto raw = base64_decode(cipher);
+    // legacy plain cookie check: 版本字节 0x80 在解码后的 payload 首字节
+    if (raw.size() < 1 + IV_LEN + 32 || raw[0] != 0x80) return cipher;
 
     auto derived = derive_key(key_);
     const unsigned char *enc_key = derived.data();
     const unsigned char *hmac_key = derived.data() + KEY_LEN;
-
-    auto raw = base64_decode(cipher);
-    if (raw.size() < 1 + IV_LEN + 32) return cipher;
 
     // verify HMAC
     size_t hmac_start = raw.size() - 32;
