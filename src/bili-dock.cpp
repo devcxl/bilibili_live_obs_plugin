@@ -1,7 +1,5 @@
 #include "bili-dock.h"
 
-#include <QClipboard>
-#include <QApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -73,10 +71,13 @@ void BiliDock::set_services(AuthService *auth, LiveService *live,
 
 bool BiliDock::configure_obs_stream(const std::string &server, const std::string &key)
 {
-    if (server.empty() || key.empty() || previous_obs_service_) return false;
+    if (server.empty() || key.empty()) return false;
 
-    obs_service_t *current = obs_frontend_get_streaming_service();
-    previous_obs_service_ = current ? obs_service_get_ref(current) : nullptr;
+    bool first_override = !obs_service_overridden_;
+    if (first_override) {
+        obs_service_t *current = obs_frontend_get_streaming_service();
+        previous_obs_service_ = current ? obs_service_get_ref(current) : nullptr;
+    }
 
     obs_data_t *settings = obs_data_create();
     obs_data_set_string(settings, "server", server.c_str());
@@ -86,38 +87,79 @@ bool BiliDock::configure_obs_stream(const std::string &server, const std::string
         "rtmp_custom", "bili-live-obs-service", settings, nullptr);
     obs_data_release(settings);
     if (!service) {
-        obs_service_release(previous_obs_service_);
-        previous_obs_service_ = nullptr;
+        if (first_override) {
+            obs_service_release(previous_obs_service_);
+            previous_obs_service_ = nullptr;
+        }
         return false;
     }
 
     obs_frontend_set_streaming_service(service);
     obs_frontend_save_streaming_service();
     obs_service_release(service);
+    obs_service_overridden_ = true;
     return true;
+}
+
+void BiliDock::apply_pending_stream_route()
+{
+    if (pending_stream_route_ < 0) return;
+
+    int target_route = pending_stream_route_;
+    const auto &target_addr = target_route == 0 ? primary_rtmp_addr_ : backup_rtmp_addr_;
+    const auto &target_code = target_route == 0 ? primary_rtmp_code_ : backup_rtmp_code_;
+
+    if (configure_obs_stream(target_addr, target_code)) {
+        active_stream_route_ = target_route;
+        pending_stream_route_ = -1;
+        stream_status_->setText(
+            QString("正在连接%1...").arg(stream_route_combo_->itemText(active_stream_route_)));
+    } else {
+        pending_stream_route_ = -1;
+        stream_route_combo_->blockSignals(true);
+        stream_route_combo_->setCurrentIndex(active_stream_route_);
+        stream_route_combo_->blockSignals(false);
+        stream_status_->setText("线路切换失败，正在恢复原线路...");
+        stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
+    }
+
+    QTimer::singleShot(0, this, [this]() {
+        if (bili_live_started_ && !restore_obs_service_pending_)
+            obs_frontend_streaming_start();
+    });
 }
 
 void BiliDock::restore_obs_stream_service()
 {
-    if (!previous_obs_service_) return;
+    if (!obs_service_overridden_) return;
 
-    obs_frontend_set_streaming_service(previous_obs_service_);
-    obs_frontend_save_streaming_service();
+    if (previous_obs_service_) {
+        obs_frontend_set_streaming_service(previous_obs_service_);
+        obs_frontend_save_streaming_service();
+    }
     obs_service_release(previous_obs_service_);
     previous_obs_service_ = nullptr;
+    obs_service_overridden_ = false;
     restore_obs_service_pending_ = false;
 }
 
 void BiliDock::on_obs_streaming_started()
 {
     if (!bili_live_started_) return;
-    stream_status_->setText("直播中 — OBS 推流已启动");
+    stream_route_combo_->setEnabled(stream_route_combo_->count() > 1);
+    stream_status_->setText(
+        QString("直播中 — OBS 使用%1").arg(stream_route_combo_->currentText()));
     stream_status_->setStyleSheet("color:#81C784;font-size:12px");
     status_bar_->setText("B站直播与 OBS 推流均已启动");
 }
 
 void BiliDock::on_obs_streaming_stopped()
 {
+    if (pending_stream_route_ >= 0) {
+        apply_pending_stream_route();
+        return;
+    }
+
     if (restore_obs_service_pending_) {
         restore_obs_stream_service();
         btn_start_->setEnabled(true);
@@ -252,51 +294,16 @@ void BiliDock::init_ui()
     stream_layout->addWidget(stream_status_);
     main->addWidget(stream_group);
 
-    // ── RTMP info ──
-    auto *rtmp_group = new QGroupBox("推流信息");
-    auto *rtmp_layout = new QVBoxLayout(rtmp_group);
-
-    auto *addr_row = new QHBoxLayout();
-    rtmp_addr_label_ = new QLabel();
-    rtmp_addr_label_->setWordWrap(true);
-    rtmp_addr_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    rtmp_addr_label_->setStyleSheet("background:#2d2d2d;border:1px solid #444;border-radius:4px;"
-        "padding:4px 6px;font-family:monospace;font-size:11px;color:#FFB74D");
-    rtmp_addr_label_->hide();
-    addr_row->addWidget(rtmp_addr_label_);
-    btn_copy_addr_ = new QPushButton("复制");
-    btn_copy_addr_->setFixedWidth(50);
-    connect(btn_copy_addr_, &QPushButton::clicked, [this]() {
-        QApplication::clipboard()->setText(QString::fromStdString(rtmp_addr_));
-    });
-    btn_copy_addr_->hide();
-    addr_row->addWidget(btn_copy_addr_);
-    rtmp_layout->addLayout(addr_row);
-
-    auto *code_row = new QHBoxLayout();
-    rtmp_code_label_ = new QLabel();
-    rtmp_code_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    rtmp_code_label_->setStyleSheet("background:#2d2d2d;border:1px solid #444;border-radius:4px;"
-        "padding:4px 6px;font-family:monospace;font-size:11px;color:#FFB74D");
-    rtmp_code_label_->hide();
-    code_row->addWidget(rtmp_code_label_);
-    btn_copy_code_ = new QPushButton("复制");
-    btn_copy_code_->setFixedWidth(50);
-    connect(btn_copy_code_, &QPushButton::clicked, [this]() {
-        QApplication::clipboard()->setText(QString::fromStdString(rtmp_code_));
-    });
-    btn_copy_code_->hide();
-    code_row->addWidget(btn_copy_code_);
-    rtmp_layout->addLayout(code_row);
-
-    rtmp_srt_label_ = new QLabel();
-    rtmp_srt_label_->setWordWrap(true);
-    rtmp_srt_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    rtmp_srt_label_->setStyleSheet("background:#2d2d2d;border:1px solid #444;border-radius:4px;"
-        "padding:4px 6px;font-family:monospace;font-size:11px;color:#81C784");
-    rtmp_srt_label_->hide();
-    rtmp_layout->addWidget(rtmp_srt_label_);
-    main->addWidget(rtmp_group);
+    // ── Stream route ──
+    stream_route_group_ = new QGroupBox("推流线路");
+    auto *route_layout = new QHBoxLayout(stream_route_group_);
+    route_layout->addWidget(new QLabel("当前线路:"));
+    stream_route_combo_ = new QComboBox();
+    connect(stream_route_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &BiliDock::on_stream_route_changed);
+    route_layout->addWidget(stream_route_combo_);
+    stream_route_group_->hide();
+    main->addWidget(stream_route_group_);
 
     status_bar_ = new QLabel("就绪");
     status_bar_->setStyleSheet("color:#666;font-size:11px;padding:2px");
@@ -464,11 +471,7 @@ void BiliDock::set_logged_out()
     btn_start_->hide();
     btn_stop_->hide();
     stream_status_->hide();
-    rtmp_addr_label_->hide();
-    btn_copy_addr_->hide();
-    rtmp_code_label_->hide();
-    btn_copy_code_->hide();
-    rtmp_srt_label_->hide();
+    stream_route_group_->hide();
     verify_group_->hide();
     user_face_label_->hide();
     user_face_label_->clear();
@@ -601,6 +604,25 @@ void BiliDock::on_title_edited()
             QString("标题更新失败: %1").arg(QString::fromStdString(result.value("msg", ""))));
 }
 
+void BiliDock::on_stream_route_changed(int index)
+{
+    if (!bili_live_started_ || pending_stream_route_ >= 0 || index < 0 ||
+        index == active_stream_route_)
+        return;
+    if (index == 1 && backup_rtmp_addr_.empty()) return;
+
+    pending_stream_route_ = index;
+    stream_route_combo_->setEnabled(false);
+    stream_status_->setText(
+        QString("正在切换到%1...").arg(stream_route_combo_->itemText(index)));
+    stream_status_->setStyleSheet("color:#FFB74D;font-size:12px");
+
+    if (obs_frontend_streaming_active())
+        obs_frontend_streaming_stop();
+    else
+        apply_pending_stream_route();
+}
+
 // ── Stream control ──
 
 void BiliDock::do_start_live()
@@ -639,12 +661,24 @@ void BiliDock::do_start_live()
         auto data = result["data"];
         auto rtmp1 = data["rtmp1"];
         auto rtmp2 = data["rtmp2"];
-        auto srt = data["srt"];
 
-        rtmp_addr_ = rtmp1["addr"].get<std::string>();
-        rtmp_code_ = rtmp1["code"].get<std::string>();
+        primary_rtmp_addr_ = rtmp1["addr"].get<std::string>();
+        primary_rtmp_code_ = rtmp1["code"].get<std::string>();
+        backup_rtmp_addr_ = rtmp2["addr"].get<std::string>();
+        backup_rtmp_code_ = rtmp2["code"].get<std::string>();
 
-        if (!configure_obs_stream(rtmp_addr_, rtmp_code_)) {
+        stream_route_combo_->blockSignals(true);
+        stream_route_combo_->clear();
+        stream_route_combo_->addItem("主线路");
+        if (!backup_rtmp_addr_.empty() && !backup_rtmp_code_.empty())
+            stream_route_combo_->addItem("备用线路");
+        stream_route_combo_->setCurrentIndex(0);
+        stream_route_combo_->setEnabled(false);
+        stream_route_combo_->blockSignals(false);
+        active_stream_route_ = 0;
+        pending_stream_route_ = -1;
+
+        if (!configure_obs_stream(primary_rtmp_addr_, primary_rtmp_code_)) {
             auto rollback = live_->stop_live();
             bili_live_started_ = rollback["code"] != 0;
             stream_status_->setText(
@@ -655,6 +689,7 @@ void BiliDock::do_start_live()
             status_bar_->setText("自动配置 OBS 失败");
             if (bili_live_started_) {
                 btn_start_->hide();
+                btn_stop_->setEnabled(true);
                 btn_stop_->show();
             }
             btn_start_->setEnabled(true);
@@ -662,33 +697,14 @@ void BiliDock::do_start_live()
         }
 
         bili_live_started_ = true;
-        QTimer::singleShot(0, this, []() {
-            obs_frontend_streaming_start();
+        QTimer::singleShot(0, this, [this]() {
+            if (bili_live_started_ && !restore_obs_service_pending_)
+                obs_frontend_streaming_start();
         });
-
-        rtmp_addr_label_->setText(QString("RTMP 地址: %1").arg(QString::fromStdString(rtmp_addr_)));
-        rtmp_addr_label_->show();
-        btn_copy_addr_->show();
-        rtmp_code_label_->setText(QString("推流码: %1").arg(QString::fromStdString(rtmp_code_)));
-        rtmp_code_label_->show();
-        btn_copy_code_->show();
-
-        if (!rtmp2["addr"].get<std::string>().empty()) {
-            QString srt_text;
-            auto srt_addr = srt["addr"].get<std::string>();
-            if (!srt_addr.empty())
-                srt_text = QString("  |  SRT: %1  |  码: %2")
-                    .arg(QString::fromStdString(srt_addr))
-                    .arg(QString::fromStdString(srt["code"].get<std::string>()));
-            rtmp_srt_label_->setText(
-                QString("备路 RTMP: %1  |  推流码: %2%3")
-                    .arg(QString::fromStdString(rtmp2["addr"].get<std::string>()))
-                    .arg(QString::fromStdString(rtmp2["code"].get<std::string>()))
-                    .arg(srt_text));
-            rtmp_srt_label_->show();
-        }
+        stream_route_group_->show();
 
         btn_start_->hide();
+        btn_stop_->setEnabled(true);
         btn_stop_->show();
         stream_status_->setText("B站已开播 — 等待 OBS 推流启动");
         stream_status_->setStyleSheet("color:#81C784;font-size:12px");
@@ -710,10 +726,13 @@ void BiliDock::do_start_live()
 
 void BiliDock::do_stop_live()
 {
-    if (!live_) return;
+    if (!live_ || !bili_live_started_) return;
+    btn_stop_->setEnabled(false);
     auto result = live_->stop_live();
     if (result["code"] == 0) {
         bili_live_started_ = false;
+        pending_stream_route_ = -1;
+        stream_route_combo_->setEnabled(false);
         if (obs_frontend_streaming_active()) {
             restore_obs_service_pending_ = true;
             obs_frontend_streaming_stop();
@@ -724,15 +743,16 @@ void BiliDock::do_stop_live()
         btn_stop_->hide();
         btn_start_->show();
         btn_start_->setEnabled(!restore_obs_service_pending_);
+        stream_route_group_->hide();
+        primary_rtmp_addr_.clear();
+        primary_rtmp_code_.clear();
+        backup_rtmp_addr_.clear();
+        backup_rtmp_code_.clear();
         stream_status_->setText("已停止直播");
         stream_status_->setStyleSheet("color:#888;font-size:12px");
-        rtmp_addr_label_->hide();
-        btn_copy_addr_->hide();
-        rtmp_code_label_->hide();
-        btn_copy_code_->hide();
-        rtmp_srt_label_->hide();
         status_bar_->setText("直播已停止");
     } else {
+        btn_stop_->setEnabled(true);
         stream_status_->setText("B站停播失败，请重试");
         stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
     }

@@ -40,6 +40,7 @@ private slots:
     void on_sub_area_changed(const QString &name);
     void on_title_edited();
     void on_face_reply(QNetworkReply *reply);
+    void on_stream_route_changed(int index);
     void do_start_live();
     void do_stop_live();
 
@@ -54,6 +55,7 @@ private:
     void load_partitions();
     void update_user_display(const QJsonObject &data);
     bool configure_obs_stream(const std::string &server, const std::string &key);
+    void apply_pending_stream_route();
     void restore_obs_stream_service();
 
     AuthService *auth_ = nullptr;
@@ -88,19 +90,21 @@ private:
     QPushButton *btn_stop_;
     QLabel *stream_status_;
 
-    QLabel *rtmp_addr_label_;
-    QPushButton *btn_copy_addr_;
-    QLabel *rtmp_code_label_;
-    QPushButton *btn_copy_code_;
-    QLabel *rtmp_srt_label_;
+    QGroupBox *stream_route_group_;
+    QComboBox *stream_route_combo_;
 
     QLabel *status_bar_;
 
     std::unordered_map<std::string, std::vector<std::string>> partition_cache_;
-    std::string rtmp_addr_;
-    std::string rtmp_code_;
+    std::string primary_rtmp_addr_;
+    std::string primary_rtmp_code_;
+    std::string backup_rtmp_addr_;
+    std::string backup_rtmp_code_;
     bool restoring_ = false;
     bool bili_live_started_ = false;
+    bool obs_service_overridden_ = false;
     bool restore_obs_service_pending_ = false;
+    int active_stream_route_ = 0;
+    int pending_stream_route_ = -1;
     obs_service_t *previous_obs_service_ = nullptr;
 };
