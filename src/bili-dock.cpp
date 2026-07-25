@@ -265,13 +265,13 @@ void BiliDock::init_ui()
     auto *stream_group = new QGroupBox("直播控制");
     auto *stream_layout = new QVBoxLayout(stream_group);
 
-    auto *title_row = new QHBoxLayout();
-    title_row->addWidget(new QLabel("标题:"));
+    auto *title_edit_row = new QHBoxLayout();
+    title_edit_row->addWidget(new QLabel("标题:"));
     title_edit_ = new QLineEdit();
     title_edit_->setPlaceholderText("输入直播标题...");
     connect(title_edit_, &QLineEdit::editingFinished, this, &BiliDock::on_title_edited);
-    title_row->addWidget(title_edit_);
-    stream_layout->addLayout(title_row);
+    title_edit_row->addWidget(title_edit_);
+    stream_layout->addLayout(title_edit_row);
 
     auto *area_row = new QHBoxLayout();
     parent_combo_ = new QComboBox();
