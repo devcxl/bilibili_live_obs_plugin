@@ -36,6 +36,7 @@ public:
     ApiResult get_room_id_by_uid(const std::string &uid);
     ApiResult get_room_info(const std::string &room_id);
     ApiResult get_area_list();
+    ApiResult get_danmu_info(const std::string &room_id);
     ApiResult update_title(const std::string &room_id, const std::string &title);
     ApiResult update_area(const std::string &room_id, const std::string &area_id);
 
