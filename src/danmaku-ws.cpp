@@ -24,7 +24,12 @@ DanmakuWebSocket::DanmakuWebSocket(QObject *parent)
     connect(ws_, &QWebSocket::disconnected, this, &DanmakuWebSocket::on_ws_disconnected);
     connect(ws_, &QWebSocket::binaryMessageReceived,
             this, &DanmakuWebSocket::on_ws_binary_message);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     connect(ws_, &QWebSocket::errorOccurred, this, &DanmakuWebSocket::on_ws_error);
+#else
+    connect(ws_, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+            this, &DanmakuWebSocket::on_ws_error);
+#endif
     connect(ws_, &QWebSocket::sslErrors, this, &DanmakuWebSocket::on_ws_ssl_errors);
     connect(heartbeat_timer_, &QTimer::timeout, this, &DanmakuWebSocket::send_heartbeat);
     connect(reconnect_timer_, &QTimer::timeout, this, &DanmakuWebSocket::attempt_reconnect);
