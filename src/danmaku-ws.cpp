@@ -1,7 +1,7 @@
 #include "danmaku-ws.h"
 
 #include <obs-module.h>
-#include <arpa/inet.h>
+#include <QtEndian>
 #include <brotli/decode.h>
 #include <nlohmann/json.hpp>
 
@@ -74,7 +74,12 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
         return;
     }
 
-    host_ = hosts[0]["host"].get<std::string>();
+    host_ = hosts[0].value("host", "");
+    if (host_.empty()) {
+        blog(LOG_WARNING, "[danmaku] host field missing in host_list");
+        start_reconnect();
+        return;
+    }
     wss_port_ = hosts[0].value("wss_port", 443);
 
     QString wss_url = QString("wss://%1:%2/sub").arg(
@@ -133,9 +138,17 @@ void DanmakuWebSocket::on_ws_ssl_errors(const QList<QSslError> &errors)
 
 void DanmakuWebSocket::send_auth_packet()
 {
+    int64_t room_id_num = 0;
+    try {
+        room_id_num = std::stoll(room_id_);
+    } catch (const std::exception &e) {
+        blog(LOG_ERROR, "[danmaku] invalid room_id: %s", room_id_.c_str());
+        return;
+    }
+
     json auth_body = {
         {"uid", 0},
-        {"roomid", std::stoll(room_id_)},
+        {"roomid", room_id_num},
         {"protover", 3},
         {"platform", "web"},
         {"type", 2},
@@ -160,10 +173,11 @@ QByteArray DanmakuWebSocket::build_packet_header(
     uint32_t packet_len, uint16_t protover, uint32_t op, uint32_t seq)
 {
     QByteArray header(16, 0);
-    *reinterpret_cast<uint32_t*>(header.data()) = htonl(packet_len);
-    *reinterpret_cast<uint16_t*>(header.data() + 4) = htons(protover);
-    *reinterpret_cast<uint32_t*>(header.data() + 8) = htonl(op);
-    *reinterpret_cast<uint32_t*>(header.data() + 12) = htonl(seq);
+    qToBigEndian(packet_len, header.data());                   // offset 0: packet_len (4B)
+    qToBigEndian<uint16_t>(16, header.data() + 4);             // offset 4: header_len = 16 (2B)
+    qToBigEndian<uint16_t>(protover, header.data() + 6);       // offset 6: protover (2B)
+    qToBigEndian(op, header.data() + 8);                       // offset 8: op (4B)
+    qToBigEndian(seq, header.data() + 12);                     // offset 12: seq (4B)
     return header;
 }
 
@@ -178,12 +192,13 @@ void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer)
 {
     int offset = 0;
     while (offset + 16 <= buffer.size()) {
-        uint32_t packet_len = ntohl(*reinterpret_cast<const uint32_t*>(
-            buffer.constData() + offset));
-        uint16_t protover   = ntohs(*reinterpret_cast<const uint16_t*>(
-            buffer.constData() + offset + 4));
-        uint32_t op         = ntohl(*reinterpret_cast<const uint32_t*>(
-            buffer.constData() + offset + 8));
+        uint32_t packet_len = qFromBigEndian<uint32_t>(
+            buffer.constData() + offset);
+        // uint16_t header_len at offset+4, fixed 16
+        uint16_t protover = qFromBigEndian<uint16_t>(
+            buffer.constData() + offset + 6);
+        uint32_t op = qFromBigEndian<uint32_t>(
+            buffer.constData() + offset + 8);
         // uint32_t seq field at offset+12, ignored
 
         if (packet_len < 16 || offset + packet_len > static_cast<uint32_t>(buffer.size())) {
@@ -211,7 +226,7 @@ void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer)
             // 心跳应答（人气值）
             if (body.size() >= 4) {
                 popularity_ = static_cast<int>(
-                    ntohl(*reinterpret_cast<const uint32_t*>(body.constData())));
+                    qFromBigEndian<uint32_t>(body.constData()));
             }
         } else if (op == 5) {
             // 业务消息
@@ -275,13 +290,29 @@ void DanmakuWebSocket::process_message(const std::string &json_str)
     if (cmd == "DANMU_MSG") {
         DanmakuMessage msg;
         msg.cmd = cmd;
+        if (!j.contains("info") || !j["info"].is_array() || j["info"].size() < 4) {
+            blog(LOG_WARNING, "[danmaku] malformed DANMU_MSG: missing info array");
+            return;
+        }
         auto &info = j["info"];
-        msg.message = info[1].get<std::string>();
-        msg.username = info[2][1].get<std::string>();
-        msg.uid = std::to_string(info[2][0].get<int64_t>());
-        if (!info[3].is_null() && info[3].is_array() && info[3].size() >= 2) {
-            msg.fan_badge = info[3][1].get<std::string>();
-            msg.fan_badge_level = info[3][0].get<int>();
+        if (info.size() > 1 && info[1].is_string()) {
+            msg.message = info[1].get<std::string>();
+        }
+        if (info.size() > 2 && info[2].is_array() && info[2].size() >= 2) {
+            if (info[2][1].is_string()) {
+                msg.username = info[2][1].get<std::string>();
+            }
+            if (info[2][0].is_number()) {
+                msg.uid = std::to_string(info[2][0].get<int64_t>());
+            }
+        }
+        if (info.size() > 3 && info[3].is_array() && info[3].size() >= 2) {
+            if (info[3][1].is_string()) {
+                msg.fan_badge = info[3][1].get<std::string>();
+            }
+            if (info[3][0].is_number()) {
+                msg.fan_badge_level = info[3][0].get<int>();
+            }
         }
 
         // 环形缓冲区写入
@@ -292,6 +323,7 @@ void DanmakuWebSocket::process_message(const std::string &json_str)
         emit danmaku_received(msg);
 
     } else if (cmd == "SEND_GIFT") {
+        if (!j.contains("data") || !j["data"].is_object()) return;
         auto &d = j["data"];
         GiftMessage gift;
         gift.username = d.value("uname", "");
@@ -302,6 +334,7 @@ void DanmakuWebSocket::process_message(const std::string &json_str)
         emit gift_received(gift);
 
     } else if (cmd == "SUPER_CHAT_MESSAGE") {
+        if (!j.contains("data") || !j["data"].is_object()) return;
         auto &d = j["data"];
         SuperChatMessage sc;
         sc.username = d.value("uname", "");
@@ -344,6 +377,8 @@ void DanmakuWebSocket::start_reconnect()
 {
     if (intentional_disconnect_ || room_id_.empty()) return;
 
+    if (reconnect_attempts_ > 31) reconnect_attempts_ = 31;
+
     int delay = RECONNECT_BASE_DELAY_MS * (1 << reconnect_attempts_);
     if (delay > RECONNECT_MAX_DELAY_MS) delay = RECONNECT_MAX_DELAY_MS;
     reconnect_attempts_++;
@@ -369,7 +404,15 @@ void DanmakuWebSocket::attempt_reconnect()
 
 const DanmakuMessage &DanmakuWebSocket::cached_message(size_t index) const
 {
-    return message_cache_[index % CACHE_SIZE];
+    static const DanmakuMessage empty;
+    if (index >= cache_count_) return empty;
+    size_t real_index;
+    if (cache_count_ < CACHE_SIZE) {
+        real_index = index;
+    } else {
+        real_index = (cache_write_pos_ + index) % CACHE_SIZE;
+    }
+    return message_cache_[real_index];
 }
 
 size_t DanmakuWebSocket::cached_message_count() const

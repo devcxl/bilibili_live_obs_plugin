@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
+#include <QByteArray>
 #include <QMetaType>
 #include <QObject>
 #include <QTimer>
