@@ -485,6 +485,11 @@ json LiveService::check_live_status()
     return json{{"code", -1}};
 }
 
+std::string LiveService::get_room_id() const
+{
+    return state_->room_id;
+}
+
 // ── AuthService ──
 
 AuthService::AuthService(BilibiliApi *api, UserService *user_svc, LiveService *live_svc, SessionState *state)
