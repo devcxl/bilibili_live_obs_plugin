@@ -51,9 +51,16 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
         blog(LOG_ERROR, "[danmaku] api not set");
         return;
     }
+    if (room_id.empty()) {
+        blog(LOG_ERROR, "[danmaku] connect_to_room called with empty room_id");
+        return;
+    }
+
+    // disconnect 前先保存 room_id，避免 disconnect_from_room 清空后丢失
+    std::string saved_room_id = room_id;
 
     disconnect_from_room();
-    room_id_ = room_id;
+    room_id_ = saved_room_id;
     intentional_disconnect_ = false;
     reconnect_attempts_ = 0;
 
@@ -85,6 +92,7 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
     QString wss_url = QString("wss://%1:%2/sub").arg(
         QString::fromStdString(host_)).arg(wss_port_);
     blog(LOG_INFO, "[danmaku] connecting to %s", wss_url.toStdString().c_str());
+    ws_->ignoreSslErrors();  // 预处理忽略，避免 sslErrors 信号触发后才忽略
     ws_->open(QUrl(wss_url));
 }
 
@@ -158,7 +166,7 @@ void DanmakuWebSocket::send_auth_packet()
     std::string body_str = auth_body.dump();
     QByteArray header = build_packet_header(
         static_cast<uint32_t>(16 + body_str.size()),
-        1,   // protover
+        0,   // protover = 0 (JSON 明文)
         7,   // op = AUTH
         seq_++
     );
