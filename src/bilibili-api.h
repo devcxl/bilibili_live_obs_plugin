@@ -48,7 +48,7 @@ public:
     ApiResult get_server_time();
     ApiResult get_buvid3();
 
-    static bool get_wbi_keys(std::string &img_key, std::string &sub_key);
+    bool get_wbi_keys(std::string &img_key, std::string &sub_key);
     static std::string sign_wbi(json params, const std::string &img_key, const std::string &sub_key);
 
 private:

@@ -288,6 +288,11 @@ bool BilibiliApi::get_wbi_keys(std::string &img_key, std::string &sub_key)
     h = curl_slist_append(h, "referer: https://www.bilibili.com/");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, h);
 
+    // 携带当前登录态 Cookie
+    if (!cookie_str_.empty()) {
+        curl_easy_setopt(curl, CURLOPT_COOKIE, cookie_str_.c_str());
+    }
+
     CURLcode cc = curl_easy_perform(curl);
     curl_slist_free_all(h);
     curl_easy_cleanup(curl);
@@ -296,7 +301,8 @@ bool BilibiliApi::get_wbi_keys(std::string &img_key, std::string &sub_key)
 
     try {
         auto j = json::parse(body);
-        if (j.value("code", -1) != 0) return false;
+        // 未登录时 code=-101，但 wbi_img 数据仍然可用，不检查 code
+        if (!j.contains("data") || !j["data"].contains("wbi_img")) return false;
         auto img_url = j["data"]["wbi_img"]["img_url"].get<std::string>();
         auto sub_url = j["data"]["wbi_img"]["sub_url"].get<std::string>();
         img_key = img_url.substr(img_url.rfind('/') + 1);
@@ -342,7 +348,7 @@ std::string BilibiliApi::sign_wbi(json params, const std::string &img_key, const
     }
 
     params["w_rid"] = md5_hex(qs + mixed);
-    return qs + "&w_rid=" + params["w_rid"].get<std::string>() + "&wts=" + params["wts"].get<std::string>();
+    return qs + "&w_rid=" + params["w_rid"].get<std::string>();
 }
 
 // ── API methods ──
@@ -417,6 +423,7 @@ ApiResult BilibiliApi::get_room_info(const std::string &room_id)
 
 ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
 {
+    // 2026 规范：getDanmuInfo 需要 WBI 签名 + web_location 参数 + buvid3 cookie
     std::string img_key, sub_key;
     if (!get_wbi_keys(img_key, sub_key)) {
         ApiResult res;
@@ -424,20 +431,22 @@ ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
         return res;
     }
 
-    json wbi_params = json{{"id", room_id}, {"type", 0}};
-    std::string signed_query = sign_wbi(wbi_params, img_key, sub_key);
-
-    // 确保 cookies 包含 buvid3（getDanmuInfo 风控要求）
     if (cookie_str_.find("buvid3") == std::string::npos) {
         ApiResult buvid_res = get_buvid3();
-        if (buvid_res.ok && buvid_res.data.contains("buvid3")) {
-            std::string buvid3 = buvid_res.data["buvid3"].get<std::string>();
+        // /x/frontend/finger/spi 返回字段名为 b_3，用作 buvid3 cookie
+        if (buvid_res.ok && buvid_res.data.contains("data")
+            && buvid_res.data["data"].contains("b_3")) {
+            std::string buvid3 = buvid_res.data["data"]["b_3"].get<std::string>();
             if (!cookie_str_.empty()) cookie_str_ += "; ";
             cookie_str_ += "buvid3=" + buvid3;
         }
     }
 
-    return do_get("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?" + signed_query);
+    json wbi_params = json{{"id", room_id}, {"type", 0}, {"web_location", "444.8"}};
+    std::string signed_query = sign_wbi(wbi_params, img_key, sub_key);
+
+    std::string full_url = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?" + signed_query;
+    return do_get(full_url);
 }
 
 ApiResult BilibiliApi::get_area_list()
