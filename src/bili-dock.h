@@ -77,7 +77,7 @@ private:
     QLabel *user_info_label_;
     QLabel *user_detail_label_;
     QComboBox *account_combo_;
-    QPushButton *btn_logout_;
+    QPushButton *btn_header_logout_ = nullptr;
 
     QGroupBox *verify_group_;
     QLabel *verify_qr_;
