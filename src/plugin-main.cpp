@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QByteArray>
+#include <QTimer>
 
 #include "bili-dock.h"
 #include "bilibili-api.h"
@@ -78,6 +79,11 @@ static void dock_load()
 
     // 恢复直播中状态
     s_live->check_live_status();
+
+    // 异步刷新账户信息（延迟触发，不阻塞 dock 加载）
+    if (s_user->has_valid_session()) {
+        QTimer::singleShot(500, s_dock, &BiliDock::refresh_account_info);
+    }
 }
 
 static void dock_unload()
