@@ -177,10 +177,23 @@ void BiliDock::init_ui()
     main->setContentsMargins(8, 8, 8, 8);
     main->setSpacing(8);
 
-    auto *title = new QLabel("B站直播工具 - OBS 插件");
-    title->setAlignment(Qt::AlignCenter);
-    title->setStyleSheet("font-size:15px;font-weight:bold;color:#fff;padding:4px");
-    main->addWidget(title);
+    // ── Title row ──
+    auto *title_row = new QHBoxLayout();
+    auto *title_label = new QLabel("B站直播工具 - OBS 插件");
+    title_label->setStyleSheet("font-size:15px;font-weight:bold;color:#fff;padding:4px");
+    title_row->addWidget(title_label);
+    title_row->addStretch();
+
+    btn_header_logout_ = new QPushButton("退出登录");
+    btn_header_logout_->setStyleSheet(
+        "QPushButton { color:#FFB74D; background:transparent; border:1px solid #FFB74D; "
+        "border-radius:4px; padding:2px 12px; font-size:12px; }"
+        "QPushButton:hover { background:#FFB74D; color:#1e1e1e; }");
+    btn_header_logout_->setFixedHeight(24);
+    btn_header_logout_->hide();
+    connect(btn_header_logout_, &QPushButton::clicked, this, &BiliDock::do_logout);
+    title_row->addWidget(btn_header_logout_);
+    main->addLayout(title_row);
 
     // ── Login section ──
     auto *login_group = new QGroupBox("账号");
@@ -230,10 +243,6 @@ void BiliDock::init_ui()
             this, &BiliDock::on_account_changed);
     account_combo_->hide();
     acc_row->addWidget(account_combo_);
-    btn_logout_ = new QPushButton("登出");
-    connect(btn_logout_, &QPushButton::clicked, this, &BiliDock::do_logout);
-    btn_logout_->hide();
-    acc_row->addWidget(btn_logout_);
     login_layout->addLayout(acc_row);
     main->addWidget(login_group);
 
@@ -380,6 +389,7 @@ void BiliDock::on_login_done(const QJsonObject &data)
         sub_combo_->setCurrentText(names[1].toString());
     restoring_ = false;
 
+    btn_header_logout_->show();
     status_bar_->setText("已登录 — 就绪");
 }
 
@@ -480,6 +490,7 @@ void BiliDock::set_logged_out()
     parent_combo_->clear();
     sub_combo_->clear();
     title_edit_->clear();
+    if (btn_header_logout_) btn_header_logout_->hide();
 }
 
 // ── Account management ──
@@ -505,10 +516,7 @@ void BiliDock::refresh_account_list()
     }
     account_combo_->blockSignals(false);
 
-    if (account_combo_->count() > 1) {
-        account_combo_->show();
-        btn_logout_->show();
-    }
+    account_combo_->setVisible(account_combo_->count() > 0);
 }
 
 void BiliDock::on_account_changed(int idx)
@@ -526,12 +534,11 @@ void BiliDock::on_account_changed(int idx)
 
 void BiliDock::do_logout()
 {
-    QString uid = account_combo_->currentData().toString();
-    if (uid.isEmpty() || !user_) return;
+    std::string uid = cfg_->current_uid;
+    if (uid.empty() || !user_) return;
 
-    user_->logout(uid.toStdString());
-    account_combo_->hide();
-    btn_logout_->hide();
+    user_->logout(uid);
+    account_combo_->setVisible(account_combo_->count() > 0);
     set_logged_out();
     btn_login_->show();
     status_bar_->setText("已登出");
