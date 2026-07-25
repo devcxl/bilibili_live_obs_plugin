@@ -69,6 +69,24 @@ void BiliDock::set_services(AuthService *auth, LiveService *live,
     cfg_ = cfg;
 }
 
+void BiliDock::set_danmaku_ws(DanmakuWebSocket *ws)
+{
+    danmaku_ws_ = ws;
+    if (!ws || !danmaku_display_) return;
+
+    connect(ws, &DanmakuWebSocket::danmaku_received,
+            danmaku_display_, &DanmakuDisplay::append_danmaku);
+    connect(ws, &DanmakuWebSocket::gift_received,
+            danmaku_display_, &DanmakuDisplay::append_gift);
+    connect(ws, &DanmakuWebSocket::super_chat_received,
+            danmaku_display_, &DanmakuDisplay::append_super_chat);
+    connect(ws, &DanmakuWebSocket::connection_state_changed,
+            this, [this](bool connected, int popularity) {
+        danmaku_display_->set_connected(connected);
+        danmaku_display_->set_popularity(popularity);
+    });
+}
+
 bool BiliDock::configure_obs_stream(const std::string &server, const std::string &key)
 {
     if (server.empty() || key.empty()) return false;
@@ -313,6 +331,11 @@ void BiliDock::init_ui()
     route_layout->addWidget(stream_route_combo_);
     stream_route_group_->hide();
     main->addWidget(stream_route_group_);
+
+    // ── Danmaku display ──
+    danmaku_display_ = new DanmakuDisplay();
+    danmaku_display_->hide();
+    main->addWidget(danmaku_display_);
 
     status_bar_ = new QLabel("就绪");
     status_bar_->setStyleSheet("color:#666;font-size:11px;padding:2px");
@@ -717,6 +740,14 @@ void BiliDock::do_start_live()
         }
 
         bili_live_started_ = true;
+        if (danmaku_ws_) {
+            std::string room_id = live_->get_room_id();
+            if (!room_id.empty()) {
+                danmaku_ws_->connect_to_room(room_id);
+                danmaku_display_->clear_all();
+                danmaku_display_->show();
+            }
+        }
         QTimer::singleShot(0, this, [this]() {
             if (bili_live_started_ && !restore_obs_service_pending_)
                 obs_frontend_streaming_start();
@@ -751,6 +782,10 @@ void BiliDock::do_stop_live()
     auto result = live_->stop_live();
     if (result["code"] == 0) {
         bili_live_started_ = false;
+        if (danmaku_ws_ && danmaku_display_) {
+            danmaku_ws_->disconnect_from_room();
+            danmaku_display_->hide();
+        }
         pending_stream_route_ = -1;
         stream_route_combo_->setEnabled(false);
         if (obs_frontend_streaming_active()) {

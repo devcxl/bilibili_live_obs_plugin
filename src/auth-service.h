@@ -61,6 +61,7 @@ public:
     json start_live(const std::string &p_name, const std::string &s_name, const std::string &title);
     json stop_live();
     json check_live_status();
+    std::string get_room_id() const;
 
     void refresh_partitions();
 

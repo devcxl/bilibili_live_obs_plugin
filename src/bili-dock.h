@@ -15,6 +15,7 @@
 #include "bilibili-api.h"
 #include "config-manager.h"
 #include "auth-service.h"
+#include "danmaku-display.h"
 
 class BiliDock : public QWidget {
     Q_OBJECT
@@ -25,6 +26,7 @@ public:
 
     void set_services(AuthService *auth, LiveService *live,
                       UserService *user, ConfigManager *cfg);
+    void set_danmaku_ws(DanmakuWebSocket *ws);
 
 public slots:
     void on_login_done(const QJsonObject &data);
@@ -63,6 +65,9 @@ private:
     LiveService *live_ = nullptr;
     UserService *user_ = nullptr;
     ConfigManager *cfg_ = nullptr;
+
+    DanmakuWebSocket *danmaku_ws_ = nullptr;
+    DanmakuDisplay *danmaku_display_ = nullptr;
 
     QTimer *poll_timer_;
     QString qrcode_key_;
