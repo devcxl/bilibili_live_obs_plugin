@@ -21,6 +21,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBCURL REQUIRED libcurl)
 pkg_check_modules(LIBQRENCODE REQUIRED libqrencode)
 pkg_check_modules(OPENSSL REQUIRED openssl)
+pkg_check_modules(LIBBROTLI REQUIRED libbrotlienc libbrotlidec)
 
 # nlohmann/json is header-only
 find_path(NLOHMANN_INCLUDE_DIR nlohmann/json.hpp
@@ -35,6 +36,8 @@ set(SOURCES
   src/bilibili-api.cpp
   src/auth-service.cpp
   src/bili-dock.cpp
+  src/danmaku-ws.cpp
+  src/danmaku-display.cpp
 )
 
 set(HEADERS
@@ -42,6 +45,8 @@ set(HEADERS
   src/bilibili-api.h
   src/auth-service.h
   src/bili-dock.h
+  src/danmaku-ws.h
+  src/danmaku-display.h
 )
 
 # ---- target ----
@@ -52,6 +57,7 @@ target_include_directories(bili-live-obs PRIVATE
   ${LIBCURL_INCLUDE_DIRS}
   ${LIBQRENCODE_INCLUDE_DIRS}
   ${OPENSSL_INCLUDE_DIRS}
+  ${LIBBROTLI_INCLUDE_DIRS}
 )
 
 target_link_libraries(bili-live-obs PRIVATE
@@ -61,12 +67,14 @@ target_link_libraries(bili-live-obs PRIVATE
   ${LIBCURL_LIBRARIES}
   ${LIBQRENCODE_LIBRARIES}
   ${OPENSSL_LIBRARIES}
+  ${LIBBROTLI_LIBRARIES}
 )
 
 target_compile_definitions(bili-live-obs PRIVATE
   ${LIBCURL_CFLAGS_OTHER}
   ${LIBQRENCODE_CFLAGS_OTHER}
   ${OPENSSL_CFLAGS_OTHER}
+  ${LIBBROTLI_CFLAGS_OTHER}
   PROJECT_VERSION="${PROJECT_VERSION}"
 )
 
@@ -93,7 +101,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "B站直播工具 OBS 插件 - 扫码登�
 set(CPACK_PACKAGE_CONTACT "https://github.com/${GITHUB_REPOSITORY}")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "BiliLiveOBS")
 set(CPACK_DEBIAN_PACKAGE_SECTION "video")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "obs-studio (>= 30.0), libqt6widgets6, libqt6network6, libcurl4, libqrencode4, libssl3")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "obs-studio (>= 30.0), libqt6widgets6, libqt6network6, libcurl4, libqrencode4, libssl3, libbrotli1")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
 set(CPACK_GENERATOR "DEB")
 set(CPACK_DEB_COMPONENT_INSTALL ON)
