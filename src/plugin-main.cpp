@@ -83,8 +83,7 @@ static void dock_load()
         "B站直播工具",
         s_dock);
 
-    // 恢复直播中状态
-    s_live->check_live_status();
+    s_dock->restore_live_state();
 
     // 异步刷新账户信息（延迟触发，不阻塞 dock 加载）
     if (s_user->has_valid_session()) {
