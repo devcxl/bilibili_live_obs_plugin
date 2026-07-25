@@ -3,6 +3,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QAbstractItemView>
+#include <algorithm>
 
 DanmakuDisplay::DanmakuDisplay(QWidget *parent)
     : QWidget(parent)
