@@ -1,5 +1,7 @@
 #include "danmaku-display.h"
 
+#include <QAbstractItemView>
+
 DanmakuDisplay::DanmakuDisplay(QWidget *parent)
     : QWidget(parent)
 {
@@ -96,6 +98,17 @@ void DanmakuDisplay::update_connection_state(bool connected)
     }
 }
 
+void DanmakuDisplay::clear_all()
+{
+    list_widget_->clear();
+}
+
+void DanmakuDisplay::set_max_visible_items(int count)
+{
+    max_visible_items_ = std::max(50, std::min(count, 1000));
+    trim_list();
+}
+
 void DanmakuDisplay::append_item(const QString &prefix, const QString &text, const QColor &color)
 {
     auto *item = new QListWidgetItem(prefix + QStringLiteral(" ") + text);
@@ -107,7 +120,7 @@ void DanmakuDisplay::append_item(const QString &prefix, const QString &text, con
 
 void DanmakuDisplay::trim_list()
 {
-    while (list_widget_->count() > MAX_VISIBLE) {
+    while (list_widget_->count() > max_visible_items_) {
         delete list_widget_->takeItem(0);
     }
 }
