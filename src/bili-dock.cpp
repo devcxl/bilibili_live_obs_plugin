@@ -537,6 +537,19 @@ void BiliDock::do_logout()
     status_bar_->setText("已登出");
 }
 
+void BiliDock::refresh_account_info()
+{
+    if (!user_ || !user_->has_valid_session()) return;
+
+    auto result = user_->refresh_current_user();
+    if (result["code"] == 0 && result.contains("data")) {
+        QJsonObject data = QJsonDocument::fromJson(
+            QByteArray::fromStdString(result["data"].dump())).object();
+        update_user_display(data);
+        status_bar_->setText("账户信息已更新");
+    }
+}
+
 // ── Partitions ──
 
 void BiliDock::load_partitions()

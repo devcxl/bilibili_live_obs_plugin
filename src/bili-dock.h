@@ -30,6 +30,7 @@ public slots:
     void on_login_done(const QJsonObject &data);
     void on_obs_streaming_started();
     void on_obs_streaming_stopped();
+    void refresh_account_info();
 
 private slots:
     void start_login();
