@@ -782,7 +782,7 @@ void BiliDock::do_stop_live()
     auto result = live_->stop_live();
     if (result["code"] == 0) {
         bili_live_started_ = false;
-        if (danmaku_ws_) {
+        if (danmaku_ws_ && danmaku_display_) {
             danmaku_ws_->disconnect_from_room();
             danmaku_display_->hide();
         }
