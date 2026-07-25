@@ -20,8 +20,9 @@ jobs:
           sudo apt-get install -y -qq \
             cmake ninja-build g++ pkg-config \
             libobs-dev \
-            qtbase5-dev \
-            libcurl4-openssl-dev libqrencode-dev libssl-dev
+            qt6-base-dev qt6-websockets-dev \
+            libcurl4-openssl-dev libqrencode-dev libssl-dev \
+            libbrotli-dev
 
       - name: configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
