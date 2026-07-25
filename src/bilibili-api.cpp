@@ -426,6 +426,17 @@ ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
 
     json wbi_params = json{{"id", room_id}, {"type", 0}};
     std::string signed_query = sign_wbi(wbi_params, img_key, sub_key);
+
+    // 确保 cookies 包含 buvid3（getDanmuInfo 风控要求）
+    if (cookie_str_.find("buvid3") == std::string::npos) {
+        ApiResult buvid_res = get_buvid3();
+        if (buvid_res.ok && buvid_res.data.contains("buvid3")) {
+            std::string buvid3 = buvid_res.data["buvid3"].get<std::string>();
+            if (!cookie_str_.empty()) cookie_str_ += "; ";
+            cookie_str_ += "buvid3=" + buvid3;
+        }
+    }
+
     return do_get("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?" + signed_query);
 }
 
