@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QGroupBox>
+#include <QCheckBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <obs.h>
@@ -33,6 +34,7 @@ public slots:
     void on_obs_streaming_started();
     void on_obs_streaming_stopped();
     void refresh_account_info();
+    void restore_live_state();
 
 private slots:
     void start_login();
@@ -68,6 +70,7 @@ private:
 
     DanmakuWebSocket *danmaku_ws_ = nullptr;
     DanmakuDisplay *danmaku_display_ = nullptr;
+    QCheckBox *danmaku_toggle_ = nullptr;
 
     QTimer *poll_timer_;
     QString qrcode_key_;

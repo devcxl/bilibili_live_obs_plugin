@@ -332,6 +332,19 @@ void BiliDock::init_ui()
     stream_route_group_->hide();
     main->addWidget(stream_route_group_);
 
+    // ── 弹幕开关 ──
+    danmaku_toggle_ = new QCheckBox("启用弹幕");
+    danmaku_toggle_->setChecked(false);
+    danmaku_toggle_->setEnabled(false);
+    danmaku_toggle_->setToolTip("开播后可在推流线路下方查看实时弹幕（功能开发中）");
+    connect(danmaku_toggle_, &QCheckBox::toggled, this, [this](bool checked) {
+        if (!checked && danmaku_ws_) {
+            danmaku_ws_->disconnect_from_room();
+        }
+        if (danmaku_display_) danmaku_display_->setVisible(checked);
+    });
+    main->addWidget(danmaku_toggle_);
+
     // ── Danmaku display ──
     danmaku_display_ = new DanmakuDisplay();
     danmaku_display_->hide();
@@ -413,6 +426,7 @@ void BiliDock::on_login_done(const QJsonObject &data)
     restoring_ = false;
 
     btn_header_logout_->show();
+    danmaku_toggle_->setEnabled(true);
     status_bar_->setText("已登录 — 就绪");
 }
 
@@ -514,6 +528,12 @@ void BiliDock::set_logged_out()
     sub_combo_->clear();
     title_edit_->clear();
     if (btn_header_logout_) btn_header_logout_->hide();
+    if (danmaku_toggle_) {
+        danmaku_toggle_->setChecked(false);
+        danmaku_toggle_->setEnabled(false);
+    }
+    if (danmaku_display_) danmaku_display_->hide();
+    if (danmaku_ws_) danmaku_ws_->disconnect_from_room();
 }
 
 // ── Account management ──
@@ -565,6 +585,33 @@ void BiliDock::do_logout()
     set_logged_out();
     btn_login_->show();
     status_bar_->setText("已登出");
+}
+
+void BiliDock::restore_live_state()
+{
+    if (!live_ || !user_ || !user_->has_valid_session()) return;
+
+    auto result = live_->check_live_status();
+    if (result["code"] != 0 || !result["is_live"].get<bool>()) return;
+
+    bili_live_started_ = true;
+
+    btn_start_->hide();
+    btn_stop_->setEnabled(true);
+    btn_stop_->show();
+    stream_status_->setText("直播中 — OBS 已重启，推流未连接");
+    stream_status_->setStyleSheet("color:#FFB74D;font-size:12px");
+    stream_status_->show();
+    status_bar_->setText("B站直播仍在进行，OBS 推流已中断");
+
+    if (danmaku_ws_ && danmaku_display_) {
+        std::string room_id = live_->get_room_id();
+        if (!room_id.empty()) {
+            danmaku_ws_->connect_to_room(room_id);
+            danmaku_display_->clear_all();
+            danmaku_display_->show();
+        }
+    }
 }
 
 void BiliDock::refresh_account_info()
@@ -740,7 +787,7 @@ void BiliDock::do_start_live()
         }
 
         bili_live_started_ = true;
-        if (danmaku_ws_) {
+        if (danmaku_ws_ && danmaku_toggle_->isChecked()) {
             std::string room_id = live_->get_room_id();
             if (!room_id.empty()) {
                 danmaku_ws_->connect_to_room(room_id);
