@@ -165,13 +165,14 @@ void DanmakuWebSocket::send_auth_packet()
         {"protover", 3},
         {"platform", "web"},
         {"type", 2},
-        {"key", token_}
+        {"key", token_},
+        {"buvid", ""}   // 必须存在，可空字符串
     };
 
     std::string body_str = auth_body.dump();
     QByteArray header = build_packet_header(
         static_cast<uint32_t>(16 + body_str.size()),
-        0,   // protover = 0 (JSON 明文)
+        1,   // protover = 1 (对齐 champkeh/blive-ws)
         7,   // op = AUTH
         seq_++
     );
