@@ -9,6 +9,7 @@
 #include <QPixmap>
 #include <QBuffer>
 #include <QDebug>
+#include <QSplitter>
 
 #include <obs-frontend-api.h>
 #include <obs-module.h>
@@ -195,6 +196,12 @@ void BiliDock::init_ui()
     main->setContentsMargins(8, 8, 8, 8);
     main->setSpacing(8);
 
+    // 上部设置区容器（与弹幕区用 QSplitter 分离，可拖拽调整高度）
+    auto *upper = new QWidget(this);
+    auto *upper_layout = new QVBoxLayout(upper);
+    upper_layout->setContentsMargins(0, 0, 0, 0);
+    upper_layout->setSpacing(8);
+
     // ── Title row ──
     auto *title_row = new QHBoxLayout();
     auto *title_label = new QLabel("B站直播工具 - OBS 插件");
@@ -211,7 +218,7 @@ void BiliDock::init_ui()
     btn_header_logout_->hide();
     connect(btn_header_logout_, &QPushButton::clicked, this, &BiliDock::do_logout);
     title_row->addWidget(btn_header_logout_);
-    main->addLayout(title_row);
+    upper_layout->addLayout(title_row);
 
     // ── Login section ──
     auto *login_group = new QGroupBox("账号");
@@ -283,7 +290,7 @@ void BiliDock::init_ui()
     });
     user_row->addWidget(btn_refresh_user_, 0, Qt::AlignTop);
     login_layout->addLayout(user_row);
-    main->addWidget(login_group);
+    upper_layout->addWidget(login_group);
 
     // ── Face verification ──
     verify_group_ = new QGroupBox("人脸验证");
@@ -298,7 +305,7 @@ void BiliDock::init_ui()
     verify_hint_->setStyleSheet("color:#FFB74D;font-size:12px");
     verify_layout->addWidget(verify_hint_);
     verify_group_->hide();
-    main->addWidget(verify_group_);
+    upper_layout->addWidget(verify_group_);
 
     // ── Stream control ──
     auto *stream_group = new QGroupBox("直播控制");
@@ -340,7 +347,7 @@ void BiliDock::init_ui()
     stream_status_->setStyleSheet("color:#888;font-size:12px");
     stream_status_->hide();
     stream_layout->addWidget(stream_status_);
-    main->addWidget(stream_group);
+    upper_layout->addWidget(stream_group);
 
     // ── Stream route ──
     stream_route_group_ = new QGroupBox("推流线路");
@@ -351,30 +358,47 @@ void BiliDock::init_ui()
             this, &BiliDock::on_stream_route_changed);
     route_layout->addWidget(stream_route_combo_);
     stream_route_group_->hide();
-    main->addWidget(stream_route_group_);
+    upper_layout->addWidget(stream_route_group_);
 
     // ── 弹幕开关 ──
+    // 弹幕区容器（可拖拽调整高度）
+    auto *danmaku_pane = new QWidget(this);
+    auto *danmaku_layout = new QVBoxLayout(danmaku_pane);
+    danmaku_layout->setContentsMargins(0, 0, 0, 0);
+    danmaku_layout->setSpacing(8);
+
     danmaku_toggle_ = new QCheckBox("启用弹幕");
     danmaku_toggle_->setChecked(false);
     danmaku_toggle_->setEnabled(false);
-    danmaku_toggle_->setToolTip("开播后可在推流线路下方查看实时弹幕（功能开发中）");
+    danmaku_toggle_->setToolTip("开播后可查看实时弹幕，弹幕区域可拖拽调整高度");
     connect(danmaku_toggle_, &QCheckBox::toggled, this, [this](bool checked) {
         if (!checked && danmaku_ws_) {
             danmaku_ws_->disconnect_from_room();
         }
         if (danmaku_display_) danmaku_display_->setVisible(checked);
     });
-    main->addWidget(danmaku_toggle_);
+    danmaku_layout->addWidget(danmaku_toggle_);
 
     // ── Danmaku display ──
     danmaku_display_ = new DanmakuDisplay();
     danmaku_display_->hide();
-    main->addWidget(danmaku_display_);
+    danmaku_layout->addWidget(danmaku_display_);
 
     status_bar_ = new QLabel("就绪");
     status_bar_->setStyleSheet("color:#666;font-size:11px;padding:2px");
+    // 垂直分割：上方设置区 / 弹幕区（拖拽分隔条调整高度）
+    auto *splitter = new QSplitter(Qt::Vertical, this);
+    splitter->addWidget(upper);
+    splitter->addWidget(danmaku_pane);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 0);
+    splitter->setCollapsible(0, false);
+    splitter->setCollapsible(1, false);
+    splitter->setHandleWidth(6);
+    splitter->setStyleSheet("QSplitter::handle { background:#3a3a3a; }");
+    splitter->setSizes({480, 320});   // 初始：弹幕区 320px，之后可拖拽
+    main->addWidget(splitter);
     main->addWidget(status_bar_);
-    main->addStretch();
 
     set_logged_out();
 }
