@@ -1,5 +1,7 @@
 # 技术方案：账号退出按钮 + OBS 启动时自动刷新账户信息
 
+> **2026-08 更新**：本插件**不做多账号**，`account_combo_` 下拉框及相关服务（`get_account_list` / `switch_account`）已删除，仅支持单一登录态。本文中所有涉及多账号切换的设计均已过时，仅作历史参考。
+
 ## 元信息
 - **PRD**: `docs/prd/account-logout-and-refresh.md`
 - **Issue**: [#1](https://github.com/devcxl/bilibili_live_obs_plugin/issues/1)

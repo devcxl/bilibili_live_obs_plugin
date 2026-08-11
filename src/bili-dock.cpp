@@ -254,14 +254,6 @@ void BiliDock::init_ui()
     user_row->addLayout(user_col);
     user_row->addStretch();
     login_layout->addLayout(user_row);
-
-    auto *acc_row = new QHBoxLayout();
-    account_combo_ = new QComboBox();
-    connect(account_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &BiliDock::on_account_changed);
-    account_combo_->hide();
-    acc_row->addWidget(account_combo_);
-    login_layout->addLayout(acc_row);
     main->addWidget(login_group);
 
     // ── Face verification ──
@@ -412,7 +404,6 @@ void BiliDock::on_login_done(const QJsonObject &data)
     hide_login_ui();
     verify_group_->hide();
     update_user_display(data);
-    refresh_account_list();
     load_partitions();
     btn_start_->show();
 
@@ -538,50 +529,12 @@ void BiliDock::set_logged_out()
 
 // ── Account management ──
 
-void BiliDock::refresh_account_list()
-{
-    if (!user_) return;
-    account_combo_->blockSignals(true);
-    account_combo_->clear();
-
-    auto result = user_->get_account_list();
-    auto accounts = result["data"]["list"];
-    auto current_uid = result["data"]["current_uid"].get<std::string>();
-
-    for (auto &acc : accounts) {
-        QString label = QString("%1 (Lv.%2)")
-            .arg(QString::fromStdString(acc["uname"].get<std::string>()))
-            .arg(QString::fromStdString(
-                acc["level"].is_string() ? acc["level"].get<std::string>() : std::to_string(acc["level"].get<int64_t>())));
-        account_combo_->addItem(label, QString::fromStdString(acc["uid"].get<std::string>()));
-        if (acc["uid"].get<std::string>() == current_uid)
-            account_combo_->setCurrentIndex(account_combo_->count() - 1);
-    }
-    account_combo_->blockSignals(false);
-
-    account_combo_->setVisible(account_combo_->count() > 0);
-}
-
-void BiliDock::on_account_changed(int idx)
-{
-    if (idx < 0 || !user_) return;
-    QString uid = account_combo_->itemData(idx).toString();
-    if (uid.isEmpty()) return;
-
-    auto result = user_->switch_account(uid.toStdString());
-    if (result["code"] == 0) {
-        on_login_done(QJsonDocument::fromJson(
-            QByteArray::fromStdString(result["data"].dump())).object());
-    }
-}
-
 void BiliDock::do_logout()
 {
     std::string uid = cfg_->current_uid;
     if (uid.empty() || !user_) return;
 
     user_->logout(uid);
-    account_combo_->setVisible(account_combo_->count() > 0);
     set_logged_out();
     btn_login_->show();
     status_bar_->setText("已登出");

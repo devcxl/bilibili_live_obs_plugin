@@ -39,8 +39,6 @@ public:
     std::string fetch_room_id(const std::unordered_map<std::string, std::string> &cookies_dict);
     json load_saved_config();
     json refresh_current_user();
-    json get_account_list();
-    json switch_account(const std::string &uid);
     json logout(const std::string &uid);
 
 private:

@@ -234,24 +234,6 @@ json UserService::refresh_current_user()
     return json{{"code", 0}, {"data", strip_sensitive(saved)}};
 }
 
-json UserService::get_account_list()
-{
-    json list = json::array();
-    for (auto &[uid, u] : cfg_->users)
-        list.push_back(strip_sensitive(u.to_json()));
-    return json{{"code", 0}, {"data", {{"list", list}, {"current_uid", cfg_->current_uid}}}};
-}
-
-json UserService::switch_account(const std::string &uid)
-{
-    if (cfg_->users.find(uid) == cfg_->users.end())
-        return json{{"code", -1}, {"msg", "账户不存在"}};
-    cfg_->current_uid = uid;
-    cfg_->save();
-    init_current_user();
-    return json{{"code", 0}, {"data", strip_sensitive(cfg_->users[uid].to_json())}};
-}
-
 json UserService::logout(const std::string &uid)
 {
     if (cfg_->users.erase(uid)) {

@@ -39,7 +39,6 @@ public slots:
 private slots:
     void start_login();
     void poll_login();
-    void on_account_changed(int idx);
     void do_logout();
     void on_parent_area_changed(const QString &name);
     void on_sub_area_changed(const QString &name);
@@ -56,7 +55,6 @@ private:
     void set_login_error(const QString &msg);
     void show_qr_in_label(QLabel *label, const QString &url);
     void show_verify_qr(const QString &url);
-    void refresh_account_list();
     void load_partitions();
     void update_user_display(const QJsonObject &data);
     bool configure_obs_stream(const std::string &server, const std::string &key);
@@ -85,7 +83,6 @@ private:
     QLabel *user_face_label_;
     QLabel *user_info_label_;
     QLabel *user_detail_label_;
-    QComboBox *account_combo_;
     QPushButton *btn_header_logout_ = nullptr;
 
     QGroupBox *verify_group_;
