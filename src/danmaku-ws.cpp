@@ -97,7 +97,6 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
     QString wss_url = QString("wss://%1:%2/sub").arg(
         QString::fromStdString(host_)).arg(wss_port_);
     blog(LOG_INFO, "[danmaku] connecting to %s", wss_url.toStdString().c_str());
-    ws_->ignoreSslErrors();  // 预处理忽略，避免 sslErrors 信号触发后才忽略
     ws_->open(QUrl(wss_url));
 }
 
@@ -143,8 +142,9 @@ void DanmakuWebSocket::on_ws_ssl_errors(const QList<QSslError> &errors)
         blog(LOG_WARNING, "[danmaku] SSL error: %s",
              e.errorString().toStdString().c_str());
     }
-    // 不中断连接（可信网络环境）
-    ws_->ignoreSslErrors();
+    // 证书校验失败：不忽略，主动断开（触发重连）。
+    // 关闭 TLS 校验会使认证包 token 与弹幕内容可被中间人伪造，安全风险不可接受。
+    ws_->abort();
 }
 
 // ── 认证 ──
@@ -406,9 +406,13 @@ void DanmakuWebSocket::start_reconnect()
 {
     if (intentional_disconnect_ || room_id_.empty()) return;
 
-    if (reconnect_attempts_ > 31) reconnect_attempts_ = 31;
-
-    int delay = RECONNECT_BASE_DELAY_MS * (1 << reconnect_attempts_);
+    // 指数退避：1s → 2s → 4s → … → 30s 封顶。用乘 2 递推代替 (1 << n)，
+    // 避免尝试次数过多时移位/乘法溢出（1<<31 是未定义行为，且 1000*2^25 已超 int 范围），
+    // 溢出会导致负值被 QTimer 当作 0ms 立即触发，退化为无间隔重连风暴。
+    int delay = RECONNECT_BASE_DELAY_MS;
+    for (int n = reconnect_attempts_; n > 0 && delay < RECONNECT_MAX_DELAY_MS; --n) {
+        delay *= 2;
+    }
     if (delay > RECONNECT_MAX_DELAY_MS) delay = RECONNECT_MAX_DELAY_MS;
     reconnect_attempts_++;
 
