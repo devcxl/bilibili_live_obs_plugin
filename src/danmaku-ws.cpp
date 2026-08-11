@@ -251,6 +251,7 @@ void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer)
             if (body.size() >= 4) {
                 popularity_ = static_cast<int>(
                     qFromBigEndian<uint32_t>(body.constData()));
+                emit connection_state_changed(true, popularity_);
             }
         } else if (op == 5) {
             // 业务消息
