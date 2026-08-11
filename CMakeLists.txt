@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(bili-live-obs
-  VERSION 0.3.0
+  VERSION 0.3.1
   LANGUAGES CXX
 )
 
