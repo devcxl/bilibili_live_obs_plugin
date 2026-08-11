@@ -115,6 +115,32 @@ void BilibiliApi::update_cookies(const std::unordered_map<std::string, std::stri
     }
 }
 
+std::string BilibiliApi::cookie_value(const std::string &name) const
+{
+    std::string needle = name + "=";
+    size_t pos = 0;
+    while ((pos = cookie_str_.find(needle, pos)) != std::string::npos) {
+        // 必须是完整 cookie 名（前一个字符为起始或分隔符）
+        if (pos == 0 || cookie_str_[pos - 1] == ';' || cookie_str_[pos - 1] == ' ') {
+            size_t val_start = pos + needle.size();
+            size_t val_end = cookie_str_.find(';', val_start);
+            return cookie_str_.substr(val_start,
+                val_end == std::string::npos ? std::string::npos : val_end - val_start);
+        }
+        pos += needle.size();
+    }
+    return {};
+}
+
+int64_t BilibiliApi::cookie_uid() const
+{
+    try {
+        return std::stoll(cookie_value("DedeUserID"));
+    } catch (...) {
+        return 0;
+    }
+}
+
 // ── curl callbacks ──
 
 size_t BilibiliApi::write_cb(void *ptr, size_t size, size_t nmemb, void *userdata)

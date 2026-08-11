@@ -145,7 +145,7 @@
 
 2. ~~修改包头 protover 为 1~~（可选，根据实测决定是否必要）
 
-3. **确保 `getDanmuInfo` 请求不带登录 Cookie**：当前实现已正确执行（`get_danmu_info` 中只在缺少 buvid3 时请求 `get_buvid3`）。需确保 `getDanmuInfo` 不使用 `SESSDATA` cookie，否则 token 会绑定用户 UID。
+3. **确保 `getDanmuInfo` 请求不带登录 Cookie**：⚠️ **此假设在 2026-08 实测中被推翻** —— 插件的 `do_get()` 始终携带 `cookie_str_`（含登录态 SESSDATA），因此 token 实际绑定登录用户，`uid=0` 认证被服务端直接断开（close，无响应）。**已按方案 B 修复**：`send_auth_packet` 从 cookie 取 `DedeUserID` 作为 `uid`、`buvid3` 作为 `buvid`（见 `BilibiliApi::cookie_uid()` / `cookie_value()`）。实测矩阵：token 与 uid 不匹配 → 服务器握手后立即断开；匹配 → `{"code":0}` 认证成功。
 
 **风险**：
 - 弹幕昵称可能被脱敏（uid 为 0，uname 可能为 `*`）
@@ -205,7 +205,7 @@ B站开放平台（open-live.bilibili.com）提供官方 WebSocket 接口，协�
 | 结论 | 置信度 | 备注 |
 |------|--------|------|
 | `buvid` 字段缺失导致连接被拒 | **高** | 6 个来源一致，含 2026-07 实测 |
-| `uid=0` 匿名可能被风控 | **中高** | 2 个来源一致，但部分项目仍用 uid=0 成功 |
+| `uid=0` 匿名可能被风控 | **中高 → 已实锤（2026-08）** | 2 个来源一致；实测：token 绑定登录 uid 时发 uid=0 必被断开；匿名 token + uid=0 可用 |
 | 包头 protover=0 vs 1 的影响 | **低** | 协议文档均合法，缺乏直接对比较据 |
 | 不同 WSS 服务器风控严格度不同 | **中** | blivedm Issue #33：broadcastlv 较严格，其他可能宽松 |
 

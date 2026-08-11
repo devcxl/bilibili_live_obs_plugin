@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include <cstdint>
 #include <nlohmann/json.hpp>
 #include <curl/curl.h>
 
@@ -23,6 +24,11 @@ public:
 
     void update_cookies(const std::unordered_map<std::string, std::string> &cookies);
     void set_csrf(const std::string &csrf) { csrf_ = csrf; }
+
+    // 从当前 cookie 串中取指定键的值（不存在返回空串）
+    std::string cookie_value(const std::string &name) const;
+    // 登录用户 UID（cookie 中的 DedeUserID），未登录返回 0
+    int64_t cookie_uid() const;
 
     // Auth
     ApiResult get_passport_qrcode();

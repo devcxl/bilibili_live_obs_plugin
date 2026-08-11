@@ -159,15 +159,25 @@ void DanmakuWebSocket::send_auth_packet()
         return;
     }
 
+    // uid 必须与 getDanmuInfo 返回的 token 绑定用户一致：token 是携带登录 cookie
+    // 换取的，绑定 DedeUserID；uid=0 匿名或与 key 不匹配会被服务端直接断开（实测）。
+    // 未登录时 cookie 无 DedeUserID，回退 uid=0 + 匿名 token（同样可用）。
+    int64_t uid = api_ ? api_->cookie_uid() : 0;
+    std::string buvid = api_ ? api_->cookie_value("buvid3") : "";
+
     json auth_body = {
-        {"uid", 0},
+        {"uid", uid},
         {"roomid", room_id_num},
         {"protover", 3},
         {"platform", "web"},
         {"type", 2},
         {"key", token_},
-        {"buvid", ""}   // 必须存在，可空字符串
+        {"buvid", buvid}   // 必须存在；登录态下用 cookie 中的 buvid3
     };
+
+    blog(LOG_INFO, "[danmaku] sending auth uid=%lld token_len=%zu buvid=%s",
+         static_cast<long long>(uid), token_.size(),
+         buvid.empty() ? "(empty)" : "ok");
 
     std::string body_str = auth_body.dump();
     QByteArray header = build_packet_header(
