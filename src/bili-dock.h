@@ -9,6 +9,7 @@
 #include <QVBoxLayout>
 #include <QGroupBox>
 #include <QCheckBox>
+#include <QProgressBar>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <obs.h>
@@ -56,6 +57,7 @@ private:
     void show_qr_in_label(QLabel *label, const QString &url);
     void show_verify_qr(const QString &url);
     void load_partitions();
+    bool do_refresh_account();   // 刷新当前用户信息，返回是否成功（自动/手动刷新共用）
     void update_user_display(const QJsonObject &data);
     bool configure_obs_stream(const std::string &server, const std::string &key);
     void apply_pending_stream_route();
@@ -83,6 +85,8 @@ private:
     QLabel *user_face_label_;
     QLabel *user_info_label_;
     QLabel *user_detail_label_;
+    QProgressBar *level_progress_ = nullptr;
+    QPushButton *btn_refresh_user_ = nullptr;
     QPushButton *btn_header_logout_ = nullptr;
 
     QGroupBox *verify_group_;

@@ -251,8 +251,37 @@ void BiliDock::init_ui()
     user_detail_label_->setStyleSheet("color:#888;font-size:11px");
     user_detail_label_->hide();
     user_col->addWidget(user_detail_label_);
+    level_progress_ = new QProgressBar();
+    level_progress_->setFixedHeight(10);
+    level_progress_->setStyleSheet(
+        "QProgressBar {"
+        "  background:#2d2d2d; border:1px solid #444; border-radius:4px;"
+        "  text-align:center; color:#aaa; font-size:10px;"
+        "}"
+        "QProgressBar::chunk { background:#669DF6; border-radius:3px; }"
+    );
+    level_progress_->hide();
+    user_col->addWidget(level_progress_);
     user_row->addLayout(user_col);
     user_row->addStretch();
+
+    // 账号卡片右上角：手动刷新用户信息按钮
+    btn_refresh_user_ = new QPushButton("刷新");
+    btn_refresh_user_->setStyleSheet(
+        "QPushButton {"
+        "  background:#3a3a3a; color:#ccc; border:1px solid #555;"
+        "  border-radius:3px; padding:2px 10px; font-size:11px;"
+        "}"
+        "QPushButton:hover { background:#4a4a4a; }"
+        "QPushButton:pressed { background:#333; }"
+    );
+    btn_refresh_user_->hide();
+    connect(btn_refresh_user_, &QPushButton::clicked, this, [this]() {
+        if (!do_refresh_account()) {
+            status_bar_->setText("账户信息刷新失败");
+        }
+    });
+    user_row->addWidget(btn_refresh_user_, 0, Qt::AlignTop);
     login_layout->addLayout(user_row);
     main->addWidget(login_group);
 
@@ -437,14 +466,29 @@ void BiliDock::update_user_display(const QJsonObject &data)
     user_info_label_->show();
 
     user_detail_label_->setText(
-        QString("UID: %1  |  房间: %2\n关注 %3 · 粉丝 %4  |  硬币 %5 · B币 %6")
+        QString("UID: %1  |  房间: %2\n关注 %3 · 粉丝 %4 · 动态 %5  |  硬币 %6 · B币 %7")
             .arg(data["uid"].toString())
             .arg(data["roomId"].toString())
             .arg(format_count(data["following"].toInt()))
             .arg(format_count(data["follower"].toInt()))
+            .arg(format_count(data["dynamic_count"].toInt()))
             .arg(format_count(data["money"].toInt()))
             .arg(data["bcoin"].toInt()));
     user_detail_label_->show();
+
+    // 升级经验条（当前经验 / 升级所需经验）
+    int cur_exp = data["current_exp"].toInt();
+    int next_exp = data["next_exp"].toInt();
+    if (next_exp > 0) {
+        level_progress_->setRange(0, next_exp);
+        level_progress_->setValue(cur_exp);
+        level_progress_->setFormat(QString("经验 %1 / %2").arg(cur_exp).arg(next_exp));
+        level_progress_->show();
+    } else {
+        level_progress_->hide();
+    }
+
+    if (btn_refresh_user_) btn_refresh_user_->show();
 
     QString face = data["face"].toString();
     if (!face.isEmpty()) {
@@ -515,6 +559,8 @@ void BiliDock::set_logged_out()
     user_face_label_->clear();
     user_info_label_->hide();
     user_detail_label_->hide();
+    if (level_progress_) level_progress_->hide();
+    if (btn_refresh_user_) btn_refresh_user_->hide();
     parent_combo_->clear();
     sub_combo_->clear();
     title_edit_->clear();
@@ -571,9 +617,10 @@ void BiliDock::restore_live_state()
     }
 }
 
-void BiliDock::refresh_account_info()
+// 刷新当前用户信息（自动刷新静默降级；手动刷新由调用方决定是否提示失败）
+bool BiliDock::do_refresh_account()
 {
-    if (!user_ || !user_->has_valid_session()) return;
+    if (!user_ || !user_->has_valid_session()) return false;
 
     auto result = user_->refresh_current_user();
     if (result["code"] == 0 && result.contains("data")) {
@@ -581,7 +628,14 @@ void BiliDock::refresh_account_info()
             QByteArray::fromStdString(result["data"].dump())).object();
         update_user_display(data);
         status_bar_->setText("账户信息已更新");
+        return true;
     }
+    return false;
+}
+
+void BiliDock::refresh_account_info()
+{
+    do_refresh_account();   // 自动刷新：失败静默降级（保持旧缓存数据）
 }
 
 // ── Partitions ──
