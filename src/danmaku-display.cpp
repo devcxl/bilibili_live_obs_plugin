@@ -56,17 +56,24 @@ DanmakuDisplay::DanmakuDisplay(QWidget *parent)
 
 void DanmakuDisplay::append_danmaku(const DanmakuMessage &msg)
 {
-    // 昵称按身份着色：舰长（大航海）红色 > 粉丝团成员橘黄 > 普通用户默认色
-    QString name_color = "#e0e0e0";
+    // 昵称颜色：舰长（大航海）红色 > 粉丝团按勋章等级渐变（橘黄→亮金）> 普通用户默认色
+    QColor name_color("#e0e0e0");
     if (msg.guard_level > 0) {
-        name_color = "#FF5252";   // 舰长：红
+        name_color = QColor("#FF5252");   // 舰长：红
     } else if (!msg.fan_badge.empty()) {
-        name_color = "#FF9800";   // 粉丝团成员：橘黄
+        // 勋章等级 1→40，HSL 线性插值：橘黄 #FF9800 → 亮金 #FFD54F
+        int level = std::clamp(msg.fan_badge_level, 1, 40);
+        const double t = (level - 1) / 39.0;
+        const QColor low("#FF9800"), high("#FFD54F");
+        name_color = QColor::fromHslF(
+            low.hueF() + (high.hueF() - low.hueF()) * t,
+            low.saturationF() + (high.saturationF() - low.saturationF()) * t,
+            low.lightnessF() + (high.lightnessF() - low.lightnessF()) * t);
     }
 
     // 富文本：仅昵称着色，消息文本保持默认色（QListWidget item 不支持富文本，用 QLabel item widget）
     QString text = QString("<span style=\"color:%1\">%2</span>: %3")
-        .arg(name_color,
+        .arg(name_color.name(),
              QString::fromStdString(msg.username).toHtmlEscaped(),
              QString::fromStdString(msg.message).toHtmlEscaped());
     auto *item = new QListWidgetItem();
