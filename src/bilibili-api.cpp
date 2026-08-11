@@ -2,6 +2,10 @@
 
 #include <obs-module.h>
 
+// B 站 WBI 签名（w_rid）与 appsign 协议强制要求 MD5，无法替换为更安全的算法。
+// 明确已知情 MD5 的密码学缺陷，此处抑制 OpenSSL 3.0 起的弃用警告。
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <algorithm>
 #include <cstring>
 #include <regex>
