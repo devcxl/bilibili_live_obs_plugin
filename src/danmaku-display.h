@@ -27,5 +27,5 @@ private:
     QListWidget *list_widget_;
     QLabel *popularity_label_;
     QLabel *status_label_;
-    int max_visible_ = 500;
+    int max_visible_ = 200;
 };
