@@ -338,6 +338,10 @@ void DanmakuWebSocket::process_message(const std::string &json_str)
             if (info[3][0].is_number()) {
                 msg.fan_badge_level = info[3][0].get<int>();
             }
+            // info[3][10] = guard_level（大航海等级：0=无，1=总督，2=提督，3=舰长）
+            if (info[3].size() > 10 && info[3][10].is_number()) {
+                msg.guard_level = info[3][10].get<int>();
+            }
         }
 
         // 环形缓冲区写入

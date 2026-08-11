@@ -21,6 +21,7 @@ struct DanmakuMessage {
     std::string message;       // 弹幕文本
     std::string fan_badge;     // 粉丝勋章名（可选）
     int fan_badge_level = 0;   // 粉丝勋章等级
+    int guard_level = 0;       // 大航海等级：0=无，1=总督，2=提督，3=舰长
 };
 
 // ─── 礼物消息 ───

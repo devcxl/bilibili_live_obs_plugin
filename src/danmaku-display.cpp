@@ -56,19 +56,25 @@ DanmakuDisplay::DanmakuDisplay(QWidget *parent)
 
 void DanmakuDisplay::append_danmaku(const DanmakuMessage &msg)
 {
-    QString text;
-    if (msg.fan_badge.empty()) {
-        text = QString::fromStdString(msg.username + ": " + msg.message);
-    } else {
-        text = QString("[%1|Lv.%2] %3: %4")
-            .arg(QString::fromStdString(msg.fan_badge))
-            .arg(msg.fan_badge_level)
-            .arg(QString::fromStdString(msg.username))
-            .arg(QString::fromStdString(msg.message));
+    // 昵称按身份着色：舰长（大航海）红色 > 粉丝团成员橘黄 > 普通用户默认色
+    QString name_color = "#e0e0e0";
+    if (msg.guard_level > 0) {
+        name_color = "#FF5252";   // 舰长：红
+    } else if (!msg.fan_badge.empty()) {
+        name_color = "#FF9800";   // 粉丝团成员：橘黄
     }
-    auto *item = new QListWidgetItem(text);
-    item->setForeground(QColor("#e0e0e0"));
+
+    // 富文本：仅昵称着色，消息文本保持默认色（QListWidget item 不支持富文本，用 QLabel item widget）
+    QString text = QString("<span style=\"color:%1\">%2</span>: %3")
+        .arg(name_color,
+             QString::fromStdString(msg.username).toHtmlEscaped(),
+             QString::fromStdString(msg.message).toHtmlEscaped());
+    auto *item = new QListWidgetItem();
+    auto *label = new QLabel(text);
+    label->setTextFormat(Qt::RichText);
+    label->setStyleSheet("background: transparent; padding: 0 4px;");
     list_widget_->insertItem(0, item);
+    list_widget_->setItemWidget(item, label);
     trim_items();
 }
 

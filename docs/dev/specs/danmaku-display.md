@@ -222,6 +222,7 @@ struct DanmakuMessage {
     std::string message;       // 弹幕文本
     std::string fan_badge;     // 粉丝勋章名（可选）
     int fan_badge_level = 0;   // 粉丝勋章等级
+    int guard_level = 0;       // 大航海等级：0=无，1=总督，2=提督，3=舰长
 };
 
 // 礼物消息
@@ -419,6 +420,7 @@ void DanmakuWebSocket::process_message(const std::string &json_str) {
     if (cmd == "DANMU_MSG") {
         // info[1] = 弹幕文本, info[2][1] = 用户名, info[2][0] = UID
         // info[3][1] = 粉丝勋章名, info[3][0] = 粉丝勋章等级
+        // info[3][10] = guard_level（大航海等级：0=无，1=总督，2=提督，3=舰长）
         DanmakuMessage msg;
         msg.cmd = cmd;
         msg.message = j["info"][1].get<std::string>();
