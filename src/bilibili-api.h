@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <functional>
 #include <cstdint>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <curl/curl.h>
 
@@ -23,7 +24,10 @@ public:
     ~BilibiliApi();
 
     void update_cookies(const std::unordered_map<std::string, std::string> &cookies);
-    void set_csrf(const std::string &csrf) { csrf_ = csrf; }
+    void set_csrf(const std::string &csrf) {
+        std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+        csrf_ = csrf;
+    }
 
     // 从当前 cookie 串中取指定键的值（不存在返回空串）
     std::string cookie_value(const std::string &name) const;
@@ -53,11 +57,16 @@ public:
     // Misc
     ApiResult get_server_time();
     ApiResult get_buvid3();
+    // 注销 B 站会话（使 SESSDATA 服务端失效），需携带当前登录 cookie + csrf
+    ApiResult logout_session();
 
     bool get_wbi_keys(std::string &img_key, std::string &sub_key);
     static std::string sign_wbi(json params, const std::string &img_key, const std::string &sub_key);
 
 private:
+    // 线程安全：单 curl 句柄 + 共享 cookie，用递归互斥锁串行化所有请求，
+    // 允许 get_danmu_info → get_wbi_keys/get_buvid3 的嵌套调用
+    mutable std::recursive_mutex api_mutex_;
     CURL *curl_;
     std::string cookie_str_;
     std::string csrf_;

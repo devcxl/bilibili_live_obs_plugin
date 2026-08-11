@@ -534,10 +534,14 @@ void BiliDock::do_logout()
     std::string uid = cfg_->current_uid;
     if (uid.empty() || !user_) return;
 
-    user_->logout(uid);
+    auto result = user_->logout(uid);
     set_logged_out();
     btn_login_->show();
-    status_bar_->setText("已登出");
+    if (result.value("server_logout", false)) {
+        status_bar_->setText("已登出");
+    } else {
+        status_bar_->setText("已登出（B站会话注销失败，凭据可能仍有效）");
+    }
 }
 
 void BiliDock::restore_live_state()

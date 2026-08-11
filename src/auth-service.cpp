@@ -236,6 +236,21 @@ json UserService::refresh_current_user()
 
 json UserService::logout(const std::string &uid)
 {
+    if (cfg_->users.find(uid) == cfg_->users.end())
+        return json{{"code", -1}, {"msg", "账户不存在"}};
+
+    // 先调用 B 站注销接口使 SESSDATA 服务端失效（凭据不可被重新利用），
+    // 接口失败不阻止本地登出，但通过返回值告知 UI 提示用户
+    bool server_logout_ok = false;
+    if (uid == cfg_->current_uid && !state_->csrf.empty()) {
+        // 确保 api 携带该账号的 cookie（与 csrf 匹配）
+        api_->set_csrf(state_->csrf);
+        ApiResult res = api_->logout_session();
+        server_logout_ok = res.ok && res.code == 0;
+        blog(LOG_INFO, "[bili] logout session server result: ok=%d code=%d msg=%s",
+             server_logout_ok, res.code, res.msg.c_str());
+    }
+
     if (cfg_->users.erase(uid)) {
         if (cfg_->current_uid == uid) {
             cfg_->current_uid.clear();
@@ -243,7 +258,11 @@ json UserService::logout(const std::string &uid)
             api_->update_cookies({});
         }
         cfg_->save();
-        return json{{"code", 0}};
+        json result = {{"code", 0}, {"server_logout", server_logout_ok}};
+        if (!server_logout_ok) {
+            result["msg"] = "本地已登出，但 B 站会话注销接口调用失败，SESSDATA 可能仍有效";
+        }
+        return result;
     }
     return json{{"code", -1}, {"msg", "账户不存在"}};
 }

@@ -107,6 +107,7 @@ BilibiliApi::~BilibiliApi()
 
 void BilibiliApi::update_cookies(const std::unordered_map<std::string, std::string> &cookies)
 {
+    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
     cookie_str_.clear();
     for (auto &[k, v] : cookies) {
         if (!cookie_str_.empty()) cookie_str_ += "; ";
@@ -117,6 +118,7 @@ void BilibiliApi::update_cookies(const std::unordered_map<std::string, std::stri
 
 std::string BilibiliApi::cookie_value(const std::string &name) const
 {
+    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
     std::string needle = name + "=";
     size_t pos = 0;
     while ((pos = cookie_str_.find(needle, pos)) != std::string::npos) {
@@ -208,6 +210,9 @@ std::string BilibiliApi::mask_url(const std::string &url) const
 ApiResult BilibiliApi::do_request(const std::string &method, const std::string &url,
                                    const json &params, const json &data)
 {
+    // 整个请求过程（含 cookie 读取）持锁，与 update_cookies 互斥
+    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+
     ApiResult res;
     if (!curl_) {
         res.msg = "curl not initialized";
@@ -300,6 +305,8 @@ ApiResult BilibiliApi::do_post(const std::string &url, const json &data, const j
 
 bool BilibiliApi::get_wbi_keys(std::string &img_key, std::string &sub_key)
 {
+    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+
     CURL *curl = curl_easy_init();
     if (!curl) return false;
 
@@ -449,6 +456,9 @@ ApiResult BilibiliApi::get_room_info(const std::string &room_id)
 
 ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
 {
+    // 持锁保护 cookie_str_（buvid3 拼接），递归锁允许内部调用 get_wbi_keys/get_buvid3
+    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+
     // 2026 规范：getDanmuInfo 需要 WBI 签名 + web_location 参数 + buvid3 cookie
     std::string img_key, sub_key;
     if (!get_wbi_keys(img_key, sub_key)) {
@@ -548,4 +558,12 @@ ApiResult BilibiliApi::get_server_time()
 ApiResult BilibiliApi::get_buvid3()
 {
     return do_get("https://api.bilibili.com/x/frontend/finger/spi");
+}
+
+ApiResult BilibiliApi::logout_session()
+{
+    // passport 注销接口：携带 cookie（SESSDATA）+ biliCSRF，使会话服务端失效
+    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+    json data = {{"biliCSRF", csrf_}};
+    return do_post("https://passport.bilibili.com/login/exit/v2", data);
 }

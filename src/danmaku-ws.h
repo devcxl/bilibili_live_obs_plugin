@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <future>
 #include <QByteArray>
 #include <QMetaType>
 #include <QObject>
@@ -83,7 +84,7 @@ private slots:
 private:
     // 内部方法
     void send_auth_packet();
-    void parse_packet_loop(const QByteArray &buffer);
+    void parse_packet_loop(const QByteArray &buffer, int depth = 0);
     void process_message(const std::string &json_str);
     void start_heartbeat();
     void stop_heartbeat();
@@ -92,6 +93,10 @@ private:
     QByteArray brotli_decompress(const QByteArray &compressed);
     static QByteArray build_packet_header(uint32_t packet_len, uint16_t protover,
                                            uint32_t op, uint32_t seq);
+
+    // 异步 getDanmuInfo：后台线程执行 HTTP，结果回主线程继续连接
+    void poll_danmu_info_future(std::future<ApiResult> future, uint64_t gen);
+    void on_danmu_info_ready(uint64_t gen, const ApiResult &res);
 
     // 成员变量
     QWebSocket *ws_ = nullptr;
@@ -108,6 +113,9 @@ private:
     int popularity_ = 0;
     bool authenticated_ = false;
     bool intentional_disconnect_ = false;
+
+    // 连接代次：每次 connect/disconnect 递增，用于丢弃过期的异步 getDanmuInfo 结果
+    uint64_t connect_gen_ = 0;
 
     int reconnect_attempts_ = 0;
     static constexpr int RECONNECT_BASE_DELAY_MS = 1000;

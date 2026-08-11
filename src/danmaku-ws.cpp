@@ -4,6 +4,8 @@
 #include <QtEndian>
 #include <brotli/decode.h>
 #include <nlohmann/json.hpp>
+#include <chrono>
+#include <future>
 
 using json = nlohmann::json;
 
@@ -69,8 +71,37 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
     intentional_disconnect_ = false;
     reconnect_attempts_ = 0;
 
-    ApiResult res = api_->get_danmu_info(room_id);
-    if (!res.ok || res.code != 0 || !res.data.contains("data")) {
+    // getDanmuInfo（含 WBI 签名 + buvid3，多次 HTTP）挪到后台线程执行，
+    // 避免同步阻塞 UI 线程（网络慢时 OBS 界面冻结）。结果经轮询回主线程继续。
+    const uint64_t gen = ++connect_gen_;
+    BilibiliApi *api = api_;
+    auto future = std::async(std::launch::async, [api, room_id]() {
+        return api->get_danmu_info(room_id);
+    });
+    poll_danmu_info_future(std::move(future), gen);
+}
+
+void DanmakuWebSocket::poll_danmu_info_future(std::future<ApiResult> future, uint64_t gen)
+{
+    // 50ms 轮询等待后台 HTTP 完成（不阻塞主线程）；完成后回主线程继续连接
+    if (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+        QTimer::singleShot(50, this, [this, future = std::move(future), gen]() mutable {
+            poll_danmu_info_future(std::move(future), gen);
+        });
+        return;
+    }
+    on_danmu_info_ready(gen, future.get());
+}
+
+void DanmakuWebSocket::on_danmu_info_ready(uint64_t gen, const ApiResult &res)
+{
+    // 过期结果（期间又 connect/disconnect 过）直接丢弃
+    if (gen != connect_gen_) {
+        blog(LOG_INFO, "[danmaku] stale getDanmuInfo result dropped");
+        return;
+    }
+    if (!res.ok || res.code != 0 || !res.data.contains("data")
+        || !res.data["data"].is_object()) {
         blog(LOG_WARNING, "[danmaku] getDanmuInfo failed: code=%d msg=%s",
              res.code, res.msg.c_str());
         start_reconnect();
@@ -80,8 +111,9 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
     auto &data = res.data["data"];
     token_ = data.value("token", "");
     auto &hosts = data["host_list"];
-    if (hosts.empty() || !hosts[0].contains("host")) {
-        blog(LOG_WARNING, "[danmaku] host_list empty");
+    if (!hosts.is_array() || hosts.empty()
+        || !hosts[0].is_object() || !hosts[0].contains("host")) {
+        blog(LOG_WARNING, "[danmaku] host_list empty or malformed");
         start_reconnect();
         return;
     }
@@ -103,6 +135,7 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
 void DanmakuWebSocket::disconnect_from_room()
 {
     intentional_disconnect_ = true;
+    ++connect_gen_;   // 使进行中的异步 getDanmuInfo 结果失效
     stop_heartbeat();
     stop_reconnect();
     authenticated_ = false;
@@ -212,8 +245,15 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
     parse_packet_loop(data);
 }
 
-void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer)
+void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer, int depth)
 {
+    // 限制嵌套深度：合法数据最多两层（WS 消息 → brotli 解压 → 明文包），
+    // 构造“解压后仍是 protover=3 压缩包”的嵌套载荷可导致无限递归栈溢出
+    if (depth > 2) {
+        blog(LOG_WARNING, "[danmaku] packet nesting too deep (%d), dropping", depth);
+        return;
+    }
+
     int offset = 0;
     while (offset + 16 <= buffer.size()) {
         uint32_t packet_len = qFromBigEndian<uint32_t>(
@@ -262,9 +302,12 @@ void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer)
                 // Brotli 压缩
                 QByteArray decompressed = brotli_decompress(body);
                 if (!decompressed.isEmpty()) {
-                    parse_packet_loop(decompressed);
+                    parse_packet_loop(decompressed, depth + 1);
                 } else {
-                    blog(LOG_WARNING, "[danmaku] brotli decompress failed");
+                    // 解压失败或输出超限：视为异常输入，断开连接（触发重连）
+                    blog(LOG_WARNING, "[danmaku] brotli decompress failed or oversized, aborting");
+                    ws_->abort();
+                    return;
                 }
             }
         }
@@ -277,6 +320,9 @@ void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer)
 
 QByteArray DanmakuWebSocket::brotli_decompress(const QByteArray &compressed)
 {
+    // 单包解压输出硬上限：防止压缩炸弹耗尽内存（弹幕包正常远小于此值）
+    constexpr size_t MAX_DECOMPRESSED = 8 * 1024 * 1024;
+
     BrotliDecoderState *state = BrotliDecoderCreateInstance(nullptr, nullptr, nullptr);
     if (!state) return {};
 
@@ -293,6 +339,12 @@ QByteArray DanmakuWebSocket::brotli_decompress(const QByteArray &compressed)
                                             &available_out, &next_out, nullptr);
         result.append(reinterpret_cast<const char*>(out_buffer.data()),
                       out_buffer.size() - available_out);
+        if (result.size() > static_cast<int>(MAX_DECOMPRESSED)) {
+            blog(LOG_WARNING, "[danmaku] brotli output exceeds %zu bytes, abort",
+                 MAX_DECOMPRESSED);
+            BrotliDecoderDestroyInstance(state);
+            return {};
+        }
     } while (rc == BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT);
 
     BrotliDecoderDestroyInstance(state);
