@@ -20,7 +20,6 @@ DanmakuWebSocket::DanmakuWebSocket(QObject *parent)
     reconnect_timer_ = new QTimer(this);
     reconnect_timer_->setSingleShot(true);
 
-    message_cache_.resize(CACHE_SIZE);
 
     connect(ws_, &QWebSocket::connected, this, &DanmakuWebSocket::on_ws_connected);
     connect(ws_, &QWebSocket::disconnected, this, &DanmakuWebSocket::on_ws_disconnected);
@@ -396,11 +395,6 @@ void DanmakuWebSocket::process_message(const std::string &json_str)
             }
         }
 
-        // 环形缓冲区写入
-        message_cache_[cache_write_pos_] = msg;
-        cache_write_pos_ = (cache_write_pos_ + 1) % CACHE_SIZE;
-        if (cache_count_ < CACHE_SIZE) cache_count_++;
-
         emit danmaku_received(msg);
 
     } else if (cmd == "SEND_GIFT") {
@@ -485,22 +479,3 @@ void DanmakuWebSocket::attempt_reconnect()
     }
 }
 
-// ── 消息缓存查询 ──
-
-const DanmakuMessage &DanmakuWebSocket::cached_message(size_t index) const
-{
-    static const DanmakuMessage empty;
-    if (index >= cache_count_) return empty;
-    size_t real_index;
-    if (cache_count_ < CACHE_SIZE) {
-        real_index = index;
-    } else {
-        real_index = (cache_write_pos_ + index) % CACHE_SIZE;
-    }
-    return message_cache_[real_index];
-}
-
-size_t DanmakuWebSocket::cached_message_count() const
-{
-    return cache_count_;
-}

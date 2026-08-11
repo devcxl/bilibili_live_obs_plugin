@@ -83,7 +83,6 @@ private:
 
     json appsign(json params) const;
     std::string build_query(const json &params) const;
-    std::string mask_url(const std::string &url) const;
 
     static size_t write_cb(void *ptr, size_t size, size_t nmemb, void *userdata);
     static size_t header_cb(void *ptr, size_t size, size_t nmemb, void *userdata);

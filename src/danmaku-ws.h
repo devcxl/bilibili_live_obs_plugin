@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
 #include <future>
 #include <QByteArray>
 #include <QMetaType>
@@ -62,9 +61,6 @@ public:
     [[nodiscard]] bool is_connected() const;
     [[nodiscard]] int popularity() const;
 
-    // 消息缓存
-    [[nodiscard]] const DanmakuMessage &cached_message(size_t index) const;
-    [[nodiscard]] size_t cached_message_count() const;
 
 signals:
     void danmaku_received(const DanmakuMessage &msg);
@@ -121,8 +117,4 @@ private:
     static constexpr int RECONNECT_BASE_DELAY_MS = 1000;
     static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
 
-    static constexpr size_t CACHE_SIZE = 1000;
-    std::vector<DanmakuMessage> message_cache_;
-    size_t cache_write_pos_ = 0;
-    size_t cache_count_ = 0;
 };

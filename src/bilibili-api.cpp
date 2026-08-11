@@ -58,41 +58,6 @@ static std::string url_encode(const std::string &s)
     return out.str();
 }
 
-static std::string ck_str_to_dict(const std::string &ck)
-{
-    return ck; // stored as-is, we use cookie string directly
-}
-
-static json parse_qs(const std::string &qs)
-{
-    json j;
-    std::istringstream stream(qs);
-    std::string pair;
-    while (std::getline(stream, pair, '&')) {
-        auto eq = pair.find('=');
-        if (eq != std::string::npos) {
-            std::string k = pair.substr(0, eq);
-            std::string v = pair.substr(eq + 1);
-            // simple URL decode
-            std::string dec;
-            for (size_t i = 0; i < v.size(); i++) {
-                if (v[i] == '%' && i + 2 < v.size()) {
-                    int c;
-                    std::istringstream(v.substr(i + 1, 2)) >> std::hex >> c;
-                    dec += (char)c;
-                    i += 2;
-                } else if (v[i] == '+') {
-                    dec += ' ';
-                } else {
-                    dec += v[i];
-                }
-            }
-            j[k] = dec;
-        }
-    }
-    return j;
-}
-
 // ── constructor / destructor ──
 
 BilibiliApi::BilibiliApi()
@@ -185,27 +150,6 @@ json BilibiliApi::appsign(json params) const
     return params;
 }
 
-std::string BilibiliApi::mask_url(const std::string &url) const
-{
-    std::string result = url;
-    auto qpos = result.find('?');
-    if (qpos == std::string::npos) return result;
-
-    auto fragment = result.substr(qpos + 1);
-    auto params = parse_qs(fragment);
-    static const char *sensitive[] = {"uid", "room_id", "key", "token", "csrf", "csrf_token", "access_key", "qrcode_key"};
-    bool changed = false;
-    for (auto name : sensitive) {
-        if (params.contains(name)) {
-            auto v = params[name].get<std::string>();
-            if (v.size() > 4)
-                params[name] = v.substr(0, 2) + "*****" + v.substr(v.size() - 2);
-            changed = true;
-        }
-    }
-    if (!changed) return result;
-    return result.substr(0, qpos + 1) + build_query(params);
-}
 
 ApiResult BilibiliApi::do_request(const std::string &method, const std::string &url,
                                    const json &params, const json &data)
