@@ -62,6 +62,7 @@ private:
     bool configure_obs_stream(const std::string &server, const std::string &key);
     void apply_pending_stream_route();
     void restore_obs_stream_service();
+    void start_danmaku();
 
     AuthService *auth_ = nullptr;
     LiveService *live_ = nullptr;
