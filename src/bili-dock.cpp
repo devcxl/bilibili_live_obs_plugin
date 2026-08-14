@@ -374,6 +374,10 @@ void BiliDock::init_ui()
     connect(danmaku_toggle_, &QCheckBox::toggled, this, [this](bool checked) {
         if (!checked && danmaku_ws_) {
             danmaku_ws_->disconnect_from_room();
+        } else if (checked && bili_live_started_) {
+            // 关闭后重新开启必须恢复连接：连接只在开播/恢复时发起，
+            // 若开启分支不补发，重新勾选后永远收不到弹幕
+            start_danmaku();
         }
         if (danmaku_display_) danmaku_display_->setVisible(checked);
     });
@@ -641,6 +645,18 @@ void BiliDock::restore_live_state()
     }
 }
 
+// 发起弹幕连接：开播时 / 弹幕开关重新勾选时共用。
+// 需已开播且开关处于勾选状态，否则不连接（无房间可连）。
+void BiliDock::start_danmaku()
+{
+    if (!danmaku_ws_ || !danmaku_display_ || !live_ || !danmaku_toggle_->isChecked()) return;
+    std::string room_id = live_->get_room_id();
+    if (room_id.empty()) return;
+    danmaku_ws_->connect_to_room(room_id);
+    danmaku_display_->clear_all();
+    danmaku_display_->show();
+}
+
 // 刷新当前用户信息（自动刷新静默降级；手动刷新由调用方决定是否提示失败）
 bool BiliDock::do_refresh_account()
 {
@@ -822,14 +838,7 @@ void BiliDock::do_start_live()
         }
 
         bili_live_started_ = true;
-        if (danmaku_ws_ && danmaku_toggle_->isChecked()) {
-            std::string room_id = live_->get_room_id();
-            if (!room_id.empty()) {
-                danmaku_ws_->connect_to_room(room_id);
-                danmaku_display_->clear_all();
-                danmaku_display_->show();
-            }
-        }
+        start_danmaku();
         QTimer::singleShot(0, this, [this]() {
             if (bili_live_started_ && !restore_obs_service_pending_)
                 obs_frontend_streaming_start();
