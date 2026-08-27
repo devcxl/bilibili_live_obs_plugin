@@ -5,7 +5,7 @@
 #include <brotli/decode.h>
 #include <nlohmann/json.hpp>
 #include <chrono>
-#include <future>
+#include <QMetaObject>
 
 using json = nlohmann::json;
 
@@ -39,6 +39,9 @@ DanmakuWebSocket::DanmakuWebSocket(QObject *parent)
 DanmakuWebSocket::~DanmakuWebSocket()
 {
     disconnect_from_room();
+    if (fetch_thread_.joinable()) {
+        fetch_thread_.join();
+    }
 }
 
 // ── 依赖注入 / 查询 ──
@@ -70,26 +73,22 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
     intentional_disconnect_ = false;
     reconnect_attempts_ = 0;
 
-    // getDanmuInfo（含 WBI 签名 + buvid3，多次 HTTP）挪到后台线程执行，
-    // 避免同步阻塞 UI 线程（网络慢时 OBS 界面冻结）。结果经轮询回主线程继续。
+    // getDanmuInfo（含 WBI 签名 + buvid3，多次 HTTP）在独立后台线程执行，
+    // 避免同步阻塞 UI 线程。完成后通过 Qt 事件队列安全投递回主线程继续连接。
     const uint64_t gen = ++connect_gen_;
     BilibiliApi *api = api_;
-    auto future = std::async(std::launch::async, [api, room_id]() {
-        return api->get_danmu_info(room_id);
-    });
-    poll_danmu_info_future(std::move(future), gen);
-}
+    std::string current_room = room_id_;
 
-void DanmakuWebSocket::poll_danmu_info_future(std::future<ApiResult> future, uint64_t gen)
-{
-    // 50ms 轮询等待后台 HTTP 完成（不阻塞主线程）；完成后回主线程继续连接
-    if (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-        QTimer::singleShot(50, this, [this, future = std::move(future), gen]() mutable {
-            poll_danmu_info_future(std::move(future), gen);
-        });
-        return;
+    if (fetch_thread_.joinable()) {
+        fetch_thread_.join();
     }
-    on_danmu_info_ready(gen, future.get());
+
+    fetch_thread_ = std::thread([this, api, current_room, gen]() {
+        ApiResult res = api->get_danmu_info(current_room);
+        QMetaObject::invokeMethod(this, [this, gen, res = std::move(res)]() {
+            on_danmu_info_ready(gen, res);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void DanmakuWebSocket::on_danmu_info_ready(uint64_t gen, const ApiResult &res)

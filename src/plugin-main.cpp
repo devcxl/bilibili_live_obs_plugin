@@ -106,16 +106,26 @@ static void ui_dock_load(void *)
     dock_load();
 }
 
+static void ui_streaming_started(void *)
+{
+    if (s_dock) s_dock->on_obs_streaming_started();
+}
+
+static void ui_streaming_stopped(void *)
+{
+    if (s_dock) s_dock->on_obs_streaming_stopped();
+}
+
 static void on_frontend_event(enum obs_frontend_event event, void *)
 {
     if (event == OBS_FRONTEND_EVENT_FINISHED_LOADING) {
         obs_queue_task(OBS_TASK_UI, ui_dock_load, nullptr, false);
     }
-    if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED && s_dock) {
-        s_dock->on_obs_streaming_started();
+    if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED) {
+        obs_queue_task(OBS_TASK_UI, ui_streaming_started, nullptr, false);
     }
-    if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED && s_dock) {
-        s_dock->on_obs_streaming_stopped();
+    if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED) {
+        obs_queue_task(OBS_TASK_UI, ui_streaming_stopped, nullptr, false);
     }
     if (event == OBS_FRONTEND_EVENT_EXIT) {
         dock_unload();
