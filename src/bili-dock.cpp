@@ -196,8 +196,9 @@ void BiliDock::init_ui()
     main->setContentsMargins(8, 8, 8, 8);
     main->setSpacing(8);
 
-    // 上部设置区容器（与弹幕区用 QSplitter 分离，可拖拽调整高度）
+    // 上部设置区容器：固定高度，不参与 QSplitter 拖拽
     auto *upper = new QWidget(this);
+    upper_ = upper;
     auto *upper_layout = new QVBoxLayout(upper);
     upper_layout->setContentsMargins(0, 0, 0, 0);
     upper_layout->setSpacing(8);
@@ -360,12 +361,16 @@ void BiliDock::init_ui()
     stream_route_group_->hide();
     upper_layout->addWidget(stream_route_group_);
 
-    // ── 弹幕开关 ──
-    // 弹幕区容器（可拖拽调整高度）
+    // ── 弹幕区容器（可拖拽调整高度），开关放在底部状态栏一行 ──
     auto *danmaku_pane = new QWidget(this);
     auto *danmaku_layout = new QVBoxLayout(danmaku_pane);
     danmaku_layout->setContentsMargins(0, 0, 0, 0);
-    danmaku_layout->setSpacing(8);
+    danmaku_layout->setSpacing(0);
+
+    // ── Danmaku display ──
+    danmaku_display_ = new DanmakuDisplay();
+    danmaku_display_->hide();
+    danmaku_layout->addWidget(danmaku_display_);
 
     danmaku_toggle_ = new QCheckBox("启用弹幕");
     danmaku_toggle_->setChecked(false);
@@ -381,30 +386,40 @@ void BiliDock::init_ui()
         }
         if (danmaku_display_) danmaku_display_->setVisible(checked);
     });
-    danmaku_layout->addWidget(danmaku_toggle_);
-
-    // ── Danmaku display ──
-    danmaku_display_ = new DanmakuDisplay();
-    danmaku_display_->hide();
-    danmaku_layout->addWidget(danmaku_display_);
 
     status_bar_ = new QLabel("就绪");
     status_bar_->setStyleSheet("color:#666;font-size:11px;padding:2px");
-    // 垂直分割：上方设置区 / 弹幕区（拖拽分隔条调整高度）
+    auto *bottom_row = new QHBoxLayout();
+    bottom_row->setContentsMargins(0, 0, 0, 0);
+    bottom_row->addWidget(status_bar_);
+    bottom_row->addStretch();
+    bottom_row->addWidget(danmaku_toggle_);
+    // 垂直分割：上方设置区固定高度 / 弹幕区可拖拽调整高度
     auto *splitter = new QSplitter(Qt::Vertical, this);
-    splitter->addWidget(upper);
+    splitter->addWidget(upper_);
     splitter->addWidget(danmaku_pane);
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 0);
+    splitter->setStretchFactor(0, 0);
+    splitter->setStretchFactor(1, 1);
     splitter->setCollapsible(0, false);
     splitter->setCollapsible(1, false);
     splitter->setHandleWidth(6);
     splitter->setStyleSheet("QSplitter::handle { background:#3a3a3a; }");
-    splitter->setSizes({480, 320});   // 初始：弹幕区 320px，之后可拖拽
+    reset_upper_height();
+    splitter->setSizes({upper_->height(), 320});   // 初始：上部按内容高度，弹幕区 320px，之后可拖拽
     main->addWidget(splitter);
-    main->addWidget(status_bar_);
+    main->addLayout(bottom_row);
 
     set_logged_out();
+}
+
+// 锁定上部设置区高度为当前内容所需高度（min==max，QSplitter 拖拽只会改变弹幕区）。
+// 额外加缓冲，避免 GroupBox 标题/边框在 QSS 下被压得过紧。
+// 上区内容随登录/开播等状态变化，故在相关变化点调用刷新。
+void BiliDock::reset_upper_height()
+{
+    if (!upper_) return;
+    const int h = qMax(upper_->sizeHint().height(), upper_->minimumSizeHint().height());
+    upper_->setFixedHeight(h + 8);
 }
 
 // ── Login ──
@@ -428,6 +443,7 @@ void BiliDock::start_login()
     show_qr_in_label(login_qr_, login_url);
     login_status_->setText("请使用 Bilibili 客户端扫码登录");
     login_status_->show();
+    reset_upper_height();
     poll_count_ = 0;
     poll_timer_->start(2000);
 }
@@ -476,6 +492,8 @@ void BiliDock::on_login_done(const QJsonObject &data)
     btn_header_logout_->show();
     danmaku_toggle_->setEnabled(true);
     status_bar_->setText("已登录 — 就绪");
+
+    reset_upper_height();
 }
 
 static QString format_count(qint64 n)
@@ -549,11 +567,13 @@ void BiliDock::set_login_error(const QString &msg)
     btn_login_->setText("扫码登录");
     btn_login_->show();
     status_bar_->setText(msg);
+    reset_upper_height();
 }
 
 void BiliDock::show_verify_qr(const QString &url)
 {
     verify_group_->show();
+    reset_upper_height();
     show_qr_in_label(verify_qr_, url);
 }
 
@@ -599,6 +619,8 @@ void BiliDock::set_logged_out()
     }
     if (danmaku_display_) danmaku_display_->hide();
     if (danmaku_ws_) danmaku_ws_->disconnect_from_room();
+
+    reset_upper_height();
 }
 
 // ── Account management ──
@@ -634,6 +656,8 @@ void BiliDock::restore_live_state()
     stream_status_->setStyleSheet("color:#FFB74D;font-size:12px");
     stream_status_->show();
     status_bar_->setText("B站直播仍在进行，OBS 推流已中断");
+
+    reset_upper_height();
 
     if (danmaku_ws_ && danmaku_display_) {
         std::string room_id = live_->get_room_id();
@@ -844,6 +868,7 @@ void BiliDock::do_start_live()
                 obs_frontend_streaming_start();
         });
         stream_route_group_->show();
+        reset_upper_height();
 
         btn_start_->hide();
         btn_stop_->setEnabled(true);
@@ -890,6 +915,7 @@ void BiliDock::do_stop_live()
         btn_start_->show();
         btn_start_->setEnabled(!restore_obs_service_pending_);
         stream_route_group_->hide();
+        reset_upper_height();
         primary_rtmp_addr_.clear();
         primary_rtmp_code_.clear();
         backup_rtmp_addr_.clear();
