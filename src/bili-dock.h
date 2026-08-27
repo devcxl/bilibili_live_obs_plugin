@@ -56,6 +56,7 @@ private:
     void set_login_error(const QString &msg);
     void show_qr_in_label(QLabel *label, const QString &url);
     void show_verify_qr(const QString &url);
+    void handle_poll_login_result(const json &result);
     void load_partitions();
     bool do_refresh_account();   // 刷新当前用户信息，返回是否成功（自动/手动刷新共用）
     void update_user_display(const QJsonObject &data);
@@ -76,6 +77,7 @@ private:
     QTimer *poll_timer_;
     QString qrcode_key_;
     int poll_count_ = 0;
+    bool polling_in_flight_ = false;
 
     QNetworkAccessManager *net_;
 

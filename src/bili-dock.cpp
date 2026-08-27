@@ -14,6 +14,7 @@
 #include <obs-frontend-api.h>
 #include <obs-module.h>
 #include <qrencode.h>
+#include <thread>
 
 // ── QR pixmap generator (local, no network) ──
 
@@ -434,9 +435,25 @@ void BiliDock::start_login()
 
 void BiliDock::poll_login()
 {
+    if (polling_in_flight_ || !auth_ || qrcode_key_.isEmpty()) return;
+    polling_in_flight_ = true;
     poll_count_++;
-    auto result = auth_->poll_login_status(qrcode_key_.toStdString());
-    int code = result["code"];
+
+    std::string key = qrcode_key_.toStdString();
+    AuthService *auth = auth_;
+
+    std::thread([this, auth, key]() {
+        json result = auth->poll_login_status(key);
+        QMetaObject::invokeMethod(this, [this, result = std::move(result)]() {
+            polling_in_flight_ = false;
+            handle_poll_login_result(result);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void BiliDock::handle_poll_login_result(const json &result)
+{
+    int code = result.value("code", -1);
 
     if (code == 0) {
         poll_timer_->stop();
@@ -544,6 +561,7 @@ void BiliDock::on_face_reply(QNetworkReply *reply)
 
 void BiliDock::set_login_error(const QString &msg)
 {
+    polling_in_flight_ = false;
     hide_login_ui();
     btn_login_->setEnabled(true);
     btn_login_->setText("扫码登录");

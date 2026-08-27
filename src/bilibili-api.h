@@ -25,7 +25,7 @@ public:
 
     void update_cookies(const std::unordered_map<std::string, std::string> &cookies);
     void set_csrf(const std::string &csrf) {
-        std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+        std::lock_guard<std::mutex> lock(api_mutex_);
         csrf_ = csrf;
     }
 
@@ -64,10 +64,8 @@ public:
     static std::string sign_wbi(json params, const std::string &img_key, const std::string &sub_key);
 
 private:
-    // 线程安全：单 curl 句柄 + 共享 cookie，用递归互斥锁串行化所有请求，
-    // 允许 get_danmu_info → get_wbi_keys/get_buvid3 的嵌套调用
-    mutable std::recursive_mutex api_mutex_;
-    CURL *curl_;
+    // 线程安全：独立 curl 句柄，mutex 仅保护 cookie_str_ 与 csrf_ 读写
+    mutable std::mutex api_mutex_;
     std::string cookie_str_;
     std::string csrf_;
 
