@@ -3,6 +3,7 @@
 #include <obs-module.h>
 #include <QtEndian>
 #include <brotli/decode.h>
+#include <zlib.h>
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <QMetaObject>
@@ -296,6 +297,16 @@ void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer, int depth)
             if (protover == 0) {
                 // 未压缩
                 process_message(body.toStdString());
+            } else if (protover == 2) {
+                // zlib / deflate 压缩
+                QByteArray decompressed = zlib_decompress(body);
+                if (!decompressed.isEmpty()) {
+                    parse_packet_loop(decompressed, depth + 1);
+                } else {
+                    blog(LOG_WARNING, "[danmaku] zlib decompress failed or oversized, aborting");
+                    ws_->abort();
+                    return;
+                }
             } else if (protover == 3) {
                 // Brotli 压缩
                 QByteArray decompressed = brotli_decompress(body);
@@ -312,6 +323,53 @@ void DanmakuWebSocket::parse_packet_loop(const QByteArray &buffer, int depth)
 
         offset += packet_len;
     }
+}
+
+// ── zlib / deflate 解压 ──
+
+QByteArray DanmakuWebSocket::zlib_decompress(const QByteArray &compressed)
+{
+    if (compressed.isEmpty()) return {};
+
+    z_stream strm;
+    std::memset(&strm, 0, sizeof(strm));
+
+    if (inflateInit(&strm) != Z_OK) {
+        return {};
+    }
+
+    strm.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(compressed.constData()));
+    strm.avail_in = static_cast<uInt>(compressed.size());
+
+    constexpr size_t CHUNK = 65536;
+    constexpr size_t MAX_DECOMPRESSED = 8 * 1024 * 1024;
+    std::vector<char> out_buf(CHUNK);
+    QByteArray result;
+
+    int ret = Z_OK;
+    do {
+        strm.next_out = reinterpret_cast<Bytef*>(out_buf.data());
+        strm.avail_out = CHUNK;
+
+        ret = inflate(&strm, Z_NO_FLUSH);
+        if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) {
+            inflateEnd(&strm);
+            return {};
+        }
+
+        size_t have = CHUNK - strm.avail_out;
+        result.append(out_buf.data(), static_cast<int>(have));
+
+        if (result.size() > static_cast<int>(MAX_DECOMPRESSED)) {
+            blog(LOG_WARNING, "[danmaku] zlib output exceeds %zu bytes, abort",
+                 MAX_DECOMPRESSED);
+            inflateEnd(&strm);
+            return {};
+        }
+    } while (strm.avail_out == 0 && ret != Z_STREAM_END);
+
+    inflateEnd(&strm);
+    return result;
 }
 
 // ── Brotli 解压 ──

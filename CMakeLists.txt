@@ -15,6 +15,7 @@ find_package(obs-frontend-api REQUIRED)
 
 # std::async（后台线程 HTTP）
 find_package(Threads REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # ---- Qt6 ----
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
@@ -68,6 +69,7 @@ target_link_libraries(bili-live-obs PRIVATE
   OBS::obs-frontend-api
   Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets
   Threads::Threads
+  ZLIB::ZLIB
   ${LIBCURL_LIBRARIES}
   ${LIBQRENCODE_LIBRARIES}
   ${OPENSSL_LIBRARIES}
