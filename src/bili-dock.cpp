@@ -574,6 +574,9 @@ void BiliDock::on_login_done(const QJsonObject &data)
     status_bar_->setText("已登录 — 就绪");
 
     reset_upper_height();
+
+    // 默认启用弹幕：登录完成后立即自动连接直播间弹幕并显示
+    start_danmaku();
 }
 
 static QString format_count(qint64 n)
