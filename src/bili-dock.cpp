@@ -102,6 +102,8 @@ void BiliDock::set_danmaku_ws(DanmakuWebSocket *ws)
                 tts_manager_, &TtsManager::on_gift_received);
         connect(ws, &DanmakuWebSocket::super_chat_received,
                 tts_manager_, &TtsManager::on_super_chat_received);
+        connect(ws, &DanmakuWebSocket::entry_received,
+                tts_manager_, &TtsManager::on_entry_received);
     }
 }
 
@@ -122,6 +124,8 @@ void BiliDock::set_tts_manager(TtsManager *tts)
         c.read_danmaku = cfg_->tts.read_danmaku;
         c.read_gift = cfg_->tts.read_gift;
         c.read_sc = cfg_->tts.read_sc;
+        c.read_entry = cfg_->tts.read_entry;
+        c.entry_filter = static_cast<TtsEntryFilter>(cfg_->tts.entry_filter);
         c.merge_enabled = cfg_->tts.merge_enabled;
         tts_manager_->update_config(c);
 
@@ -137,6 +141,8 @@ void BiliDock::set_tts_manager(TtsManager *tts)
                 tts_manager_, &TtsManager::on_gift_received);
         connect(danmaku_ws_, &DanmakuWebSocket::super_chat_received,
                 tts_manager_, &TtsManager::on_super_chat_received);
+        connect(danmaku_ws_, &DanmakuWebSocket::entry_received,
+                tts_manager_, &TtsManager::on_entry_received);
     }
 }
 
@@ -1121,12 +1127,30 @@ void BiliDock::open_tts_settings()
     chk_gift->setChecked(cfg_->tts.read_gift);
     auto *chk_sc = new QCheckBox("朗读 SC 醒目留言 (高优先级)");
     chk_sc->setChecked(cfg_->tts.read_sc);
-    auto *chk_merge = new QCheckBox("智能合并短弹幕 (节省额度与提升流畅度)");
+
+    auto *entry_row = new QHBoxLayout();
+    auto *chk_entry = new QCheckBox("朗读进房欢迎");
+    chk_entry->setChecked(cfg_->tts.read_entry);
+    auto *entry_filter_combo = new QComboBox();
+    entry_filter_combo->addItem("全部观众进房", 0);
+    entry_filter_combo->addItem("仅佩戴粉丝勋章观众", 1);
+    entry_filter_combo->addItem("仅大航海 (舰长/提督/总督)", 2);
+    entry_filter_combo->setCurrentIndex(std::clamp(cfg_->tts.entry_filter, 0, 2));
+    entry_filter_combo->setEnabled(chk_entry->isChecked());
+    connect(chk_entry, &QCheckBox::toggled, entry_filter_combo, &QComboBox::setEnabled);
+    entry_row->addWidget(chk_entry);
+    entry_row->addSpacing(8);
+    entry_row->addWidget(new QLabel("范围:"));
+    entry_row->addWidget(entry_filter_combo);
+    entry_row->addStretch();
+
+    auto *chk_merge = new QCheckBox("智能合并短弹幕/进房 (节省额度与提升流畅度)");
     chk_merge->setChecked(cfg_->tts.merge_enabled);
 
     grp_layout->addWidget(chk_danmaku);
     grp_layout->addWidget(chk_gift);
     grp_layout->addWidget(chk_sc);
+    grp_layout->addLayout(entry_row);
     grp_layout->addWidget(chk_merge);
     layout->addWidget(grp_content);
 
@@ -1170,6 +1194,8 @@ void BiliDock::open_tts_settings()
         cfg_->tts.read_danmaku = chk_danmaku->isChecked();
         cfg_->tts.read_gift = chk_gift->isChecked();
         cfg_->tts.read_sc = chk_sc->isChecked();
+        cfg_->tts.read_entry = chk_entry->isChecked();
+        cfg_->tts.entry_filter = entry_filter_combo->currentData().toInt();
         cfg_->tts.merge_enabled = chk_merge->isChecked();
         cfg_->save();
 
@@ -1184,6 +1210,8 @@ void BiliDock::open_tts_settings()
         c.read_danmaku = cfg_->tts.read_danmaku;
         c.read_gift = cfg_->tts.read_gift;
         c.read_sc = cfg_->tts.read_sc;
+        c.read_entry = cfg_->tts.read_entry;
+        c.entry_filter = static_cast<TtsEntryFilter>(cfg_->tts.entry_filter);
         c.merge_enabled = cfg_->tts.merge_enabled;
         tts_manager_->update_config(c);
 

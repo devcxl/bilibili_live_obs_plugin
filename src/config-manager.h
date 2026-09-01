@@ -40,6 +40,8 @@ struct TtsConfigData {
     bool read_danmaku = true;
     bool read_gift = true;
     bool read_sc = true;
+    bool read_entry = false;             // 是否开启进房播报
+    int entry_filter = 0;                // 进房播报范围: 0=全部观众, 1=仅粉丝勋章, 2=仅大航海(舰长/提督/总督)
     bool merge_enabled = true;
 };
 

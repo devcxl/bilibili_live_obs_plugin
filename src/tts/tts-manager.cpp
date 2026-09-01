@@ -142,16 +142,53 @@ void TtsManager::on_super_chat_received(const SuperChatMessage &msg)
     enqueue_message(item);
 }
 
+void TtsManager::on_entry_received(const EntryMessage &msg)
+{
+    if (!config_.enabled || !config_.read_entry) return;
+
+    // 过滤范围判断
+    if (config_.entry_filter == TtsEntryFilter::GuardOnly) {
+        if (msg.guard_level <= 0) return; // 非大航海忽略
+    } else if (config_.entry_filter == TtsEntryFilter::WithMedal) {
+        if (msg.medal_name.empty() && msg.guard_level <= 0) return; // 无勋章且非大航海忽略
+    }
+
+    QString formatted = TtsCleaner::format_entry(
+        QString::fromStdString(msg.username),
+        msg.guard_level,
+        QString::fromStdString(msg.medal_name)
+    );
+    if (formatted.isEmpty()) return;
+
+    TtsMessage item;
+    item.id = next_id_++;
+    item.priority = TtsPriority::Entry;
+    item.text = formatted;
+    item.sender = QString::fromStdString(msg.username);
+    item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
+
+    enqueue_message(item);
+}
+
 void TtsManager::enqueue_message(const TtsMessage &msg)
 {
     if (queue_.size() >= MAX_QUEUE_SIZE) {
-        // 队列达到 1000 上限时，淘汰队尾最老的普通弹幕，确保 SC 和礼物不丢失
+        // 队列达到 1000 上限时：优先淘汰队尾最老的 Entry，其次 Normal，确保 SC 和礼物不丢失
         bool removed = false;
         for (auto it = queue_.rbegin(); it != queue_.rend(); ++it) {
-            if (it->priority == TtsPriority::Normal) {
+            if (it->priority == TtsPriority::Entry) {
                 queue_.erase(std::next(it).base());
                 removed = true;
                 break;
+            }
+        }
+        if (!removed) {
+            for (auto it = queue_.rbegin(); it != queue_.rend(); ++it) {
+                if (it->priority == TtsPriority::Normal) {
+                    queue_.erase(std::next(it).base());
+                    removed = true;
+                    break;
+                }
             }
         }
         if (!removed) {
@@ -159,7 +196,7 @@ void TtsManager::enqueue_message(const TtsMessage &msg)
         }
     }
 
-    // 按优先级插入：SC 插在所有 Gift 和 Normal 之前；Gift 插在 Normal 之前
+    // 按优先级插入：SC (3) > Gift (2) > Normal (1) > Entry (0)
     if (msg.priority == TtsPriority::SuperChat) {
         auto it = std::find_if(queue_.begin(), queue_.end(), [](const TtsMessage &m) {
             return m.priority < TtsPriority::SuperChat;
@@ -168,6 +205,11 @@ void TtsManager::enqueue_message(const TtsMessage &msg)
     } else if (msg.priority == TtsPriority::Gift) {
         auto it = std::find_if(queue_.begin(), queue_.end(), [](const TtsMessage &m) {
             return m.priority < TtsPriority::Gift;
+        });
+        queue_.insert(it, msg);
+    } else if (msg.priority == TtsPriority::Normal) {
+        auto it = std::find_if(queue_.begin(), queue_.end(), [](const TtsMessage &m) {
+            return m.priority < TtsPriority::Normal;
         });
         queue_.insert(it, msg);
     } else {
@@ -203,6 +245,16 @@ void TtsManager::process_queue()
             queue_.pop_front();
         }
         text_to_speak = TtsCleaner::merge_messages(batch, 100);
+    } else if (first.priority == TtsPriority::Entry && config_.merge_enabled && !queue_.empty()) {
+        // 尝试批量合并紧接着的连续进房消息（最多 3 条）
+        std::vector<TtsMessage> batch;
+        batch.push_back(first);
+
+        while (!queue_.empty() && queue_.front().priority == TtsPriority::Entry && batch.size() < 3) {
+            batch.push_back(queue_.front());
+            queue_.pop_front();
+        }
+        text_to_speak = TtsCleaner::merge_messages(batch, 80);
     } else {
         text_to_speak = first.text;
     }

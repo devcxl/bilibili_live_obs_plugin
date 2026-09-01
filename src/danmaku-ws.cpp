@@ -473,6 +473,57 @@ void DanmakuWebSocket::process_message(const std::string &json_str)
         sc.message = d.value("message", "");
         sc.price = d.value("price", 0);
         emit super_chat_received(sc);
+
+    } else if (cmd == "INTERACT_WORD") {
+        if (!j.contains("data") || !j["data"].is_object()) return;
+        auto &d = j["data"];
+        EntryMessage entry;
+        entry.username = d.value("uname", "");
+        if (d.contains("uid")) {
+            if (d["uid"].is_number()) {
+                entry.uid = std::to_string(d["uid"].get<int64_t>());
+            } else if (d["uid"].is_string()) {
+                entry.uid = d["uid"].get<std::string>();
+            }
+        }
+        entry.msg_type = d.value("msg_type", 1);
+        if (d.contains("fans_medal") && d["fans_medal"].is_object()) {
+            auto &fm = d["fans_medal"];
+            entry.medal_name = fm.value("medal_name", "");
+            entry.medal_level = fm.value("medal_level", 0);
+            entry.guard_level = fm.value("guard_level", 0);
+        }
+        if (!entry.username.empty()) {
+            emit entry_received(entry);
+        }
+
+    } else if (cmd == "ENTRY_EFFECT") {
+        if (!j.contains("data") || !j["data"].is_object()) return;
+        auto &d = j["data"];
+        EntryMessage entry;
+        std::string cw = d.value("copy_writing", "");
+        if (cw.empty()) {
+            cw = d.value("copy_writing_v2", "");
+        }
+        auto start = cw.find("<%");
+        auto end = cw.find("%>");
+        if (start != std::string::npos && end != std::string::npos && end > start + 2) {
+            entry.username = cw.substr(start + 2, end - start - 2);
+        } else {
+            entry.username = d.value("uname", "");
+        }
+        if (d.contains("uid")) {
+            if (d["uid"].is_number()) {
+                entry.uid = std::to_string(d["uid"].get<int64_t>());
+            } else if (d["uid"].is_string()) {
+                entry.uid = d["uid"].get<std::string>();
+            }
+        }
+        entry.guard_level = d.value("privilege_type", 3);
+        entry.msg_type = 1;
+        if (!entry.username.empty()) {
+            emit entry_received(entry);
+        }
     }
     // 未知 cmd 静默忽略
 }

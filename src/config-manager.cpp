@@ -311,6 +311,8 @@ void ConfigManager::load()
         tts.read_danmaku = tj.value("read_danmaku", true);
         tts.read_gift = tj.value("read_gift", true);
         tts.read_sc = tj.value("read_sc", true);
+        tts.read_entry = tj.value("read_entry", false);
+        tts.entry_filter = tj.value("entry_filter", 0);
         tts.merge_enabled = tj.value("merge_enabled", true);
     }
 }
@@ -339,6 +341,8 @@ void ConfigManager::save()
     tj["read_danmaku"] = tts.read_danmaku;
     tj["read_gift"] = tts.read_gift;
     tj["read_sc"] = tts.read_sc;
+    tj["read_entry"] = tts.read_entry;
+    tj["entry_filter"] = tts.entry_filter;
     tj["merge_enabled"] = tts.merge_enabled;
     j["tts"] = tj;
 

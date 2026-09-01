@@ -103,6 +103,30 @@ QString TtsCleaner::format_super_chat(const QString &sender, int price, const QS
     return QString("醒目留言，%1说：%2").arg(s, m);
 }
 
+QString TtsCleaner::format_entry(const QString &sender, int guard_level, const QString &medal_name)
+{
+    QString s = sender.trimmed();
+    if (s.isEmpty()) return "";
+
+    // 过滤昵称中的无意义特殊字符
+    s = strip_urls(s);
+    s = clean_emojis_and_symbols(s);
+    s = compress_repeating_chars(s, 2);
+    if (s.length() > 16) {
+        s = s.left(16);
+    }
+
+    if (guard_level == 1) {
+        return QString("欢迎总督 %1 进入直播间").arg(s);
+    } else if (guard_level == 2) {
+        return QString("欢迎提督 %1 进入直播间").arg(s);
+    } else if (guard_level == 3) {
+        return QString("欢迎舰长 %1 进入直播间").arg(s);
+    }
+
+    return QString("欢迎 %1 进入直播间").arg(s);
+}
+
 QString TtsCleaner::merge_messages(const std::vector<TtsMessage> &messages, size_t max_chars)
 {
     if (messages.empty()) return "";

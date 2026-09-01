@@ -5,9 +5,16 @@
 #include <cstdint>
 
 enum class TtsPriority {
-    Normal = 0,   // 普通弹幕
-    Gift = 1,     // 礼物消息
-    SuperChat = 2 // SC 醒目留言
+    Entry = 0,    // 进房欢迎（最低优先级）
+    Normal = 1,   // 普通弹幕
+    Gift = 2,     // 礼物消息
+    SuperChat = 3 // SC 醒目留言（最高优先级）
+};
+
+enum class TtsEntryFilter {
+    All = 0,       // 全部观众进房
+    WithMedal = 1, // 仅佩戴粉丝勋章的观众
+    GuardOnly = 2  // 仅大航海（舰长/提督/总督）
 };
 
 struct TtsMessage {
@@ -37,6 +44,8 @@ struct TtsConfig {
     bool read_danmaku = true;
     bool read_gift = true;
     bool read_sc = true;
+    bool read_entry = false;
+    TtsEntryFilter entry_filter = TtsEntryFilter::All;
     bool merge_enabled = true;
 
     QString format = "raw-24khz-16bit-mono-pcm";

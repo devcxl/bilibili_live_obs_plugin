@@ -16,7 +16,10 @@ public:
     // 格式化 SC 醒目留言文本
     static QString format_super_chat(const QString &sender, int price, const QString &message);
 
-    // 智能批量合并多条排队的普通弹幕
+    // 格式化进房欢迎文本
+    static QString format_entry(const QString &sender, int guard_level, const QString &medal_name);
+
+    // 智能批量合并多条排队的普通弹幕或进房消息
     static QString merge_messages(const std::vector<TtsMessage> &messages, size_t max_chars = 120);
 
     // 去除重复刷屏字符（如 66666666 -> 666）
