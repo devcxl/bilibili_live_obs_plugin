@@ -18,6 +18,7 @@
 #include "config-manager.h"
 #include "auth-service.h"
 #include "danmaku-display.h"
+#include "tts/tts-manager.h"
 
 class BiliDock : public QWidget {
     Q_OBJECT
@@ -29,6 +30,7 @@ public:
     void set_services(AuthService *auth, LiveService *live,
                       UserService *user, ConfigManager *cfg);
     void set_danmaku_ws(DanmakuWebSocket *ws);
+    void set_tts_manager(TtsManager *tts);
 
 public slots:
     void on_login_done(const QJsonObject &data);
@@ -48,6 +50,7 @@ private slots:
     void on_stream_route_changed(int index);
     void do_start_live();
     void do_stop_live();
+    void open_tts_settings();
 
 private:
     void init_ui();
@@ -74,6 +77,10 @@ private:
     DanmakuWebSocket *danmaku_ws_ = nullptr;
     DanmakuDisplay *danmaku_display_ = nullptr;
     QCheckBox *danmaku_toggle_ = nullptr;
+
+    TtsManager *tts_manager_ = nullptr;
+    QCheckBox *tts_toggle_ = nullptr;
+    QPushButton *btn_tts_settings_ = nullptr;
 
     QTimer *poll_timer_;
     QString qrcode_key_;

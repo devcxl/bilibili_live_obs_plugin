@@ -10,6 +10,11 @@
 #include <QBuffer>
 #include <QDebug>
 #include <QSplitter>
+#include <QDialog>
+#include <QFormLayout>
+#include <QSlider>
+#include <QDialogButtonBox>
+#include <QMessageBox>
 
 #include <obs-frontend-api.h>
 #include <obs-module.h>
@@ -74,19 +79,65 @@ void BiliDock::set_services(AuthService *auth, LiveService *live,
 void BiliDock::set_danmaku_ws(DanmakuWebSocket *ws)
 {
     danmaku_ws_ = ws;
-    if (!ws || !danmaku_display_) return;
+    if (!ws) return;
 
-    connect(ws, &DanmakuWebSocket::danmaku_received,
-            danmaku_display_, &DanmakuDisplay::append_danmaku);
-    connect(ws, &DanmakuWebSocket::gift_received,
-            danmaku_display_, &DanmakuDisplay::append_gift);
-    connect(ws, &DanmakuWebSocket::super_chat_received,
-            danmaku_display_, &DanmakuDisplay::append_super_chat);
-    connect(ws, &DanmakuWebSocket::connection_state_changed,
-            this, [this](bool connected, int popularity) {
-        danmaku_display_->set_connected(connected);
-        danmaku_display_->set_popularity(popularity);
-    });
+    if (danmaku_display_) {
+        connect(ws, &DanmakuWebSocket::danmaku_received,
+                danmaku_display_, &DanmakuDisplay::append_danmaku);
+        connect(ws, &DanmakuWebSocket::gift_received,
+                danmaku_display_, &DanmakuDisplay::append_gift);
+        connect(ws, &DanmakuWebSocket::super_chat_received,
+                danmaku_display_, &DanmakuDisplay::append_super_chat);
+        connect(ws, &DanmakuWebSocket::connection_state_changed,
+                this, [this](bool connected, int popularity) {
+            danmaku_display_->set_connected(connected);
+            danmaku_display_->set_popularity(popularity);
+        });
+    }
+
+    if (tts_manager_) {
+        connect(ws, &DanmakuWebSocket::danmaku_received,
+                tts_manager_, &TtsManager::on_danmaku_received);
+        connect(ws, &DanmakuWebSocket::gift_received,
+                tts_manager_, &TtsManager::on_gift_received);
+        connect(ws, &DanmakuWebSocket::super_chat_received,
+                tts_manager_, &TtsManager::on_super_chat_received);
+    }
+}
+
+void BiliDock::set_tts_manager(TtsManager *tts)
+{
+    tts_manager_ = tts;
+    if (!tts_manager_) return;
+
+    if (cfg_) {
+        TtsConfig c;
+        c.enabled = cfg_->tts.enabled;
+        c.key = QString::fromStdString(cfg_->tts.key);
+        c.region = QString::fromStdString(cfg_->tts.region);
+        c.voice = QString::fromStdString(cfg_->tts.voice);
+        c.rate = QString::fromStdString(cfg_->tts.rate);
+        c.pitch = QString::fromStdString(cfg_->tts.pitch);
+        c.volume = cfg_->tts.volume;
+        c.read_danmaku = cfg_->tts.read_danmaku;
+        c.read_gift = cfg_->tts.read_gift;
+        c.read_sc = cfg_->tts.read_sc;
+        c.merge_enabled = cfg_->tts.merge_enabled;
+        tts_manager_->update_config(c);
+
+        if (tts_toggle_) {
+            tts_toggle_->setChecked(c.enabled);
+        }
+    }
+
+    if (danmaku_ws_) {
+        connect(danmaku_ws_, &DanmakuWebSocket::danmaku_received,
+                tts_manager_, &TtsManager::on_danmaku_received);
+        connect(danmaku_ws_, &DanmakuWebSocket::gift_received,
+                tts_manager_, &TtsManager::on_gift_received);
+        connect(danmaku_ws_, &DanmakuWebSocket::super_chat_received,
+                tts_manager_, &TtsManager::on_super_chat_received);
+    }
 }
 
 bool BiliDock::configure_obs_stream(const std::string &server, const std::string &key)
@@ -390,10 +441,34 @@ void BiliDock::init_ui()
 
     status_bar_ = new QLabel("就绪");
     status_bar_->setStyleSheet("color:#666;font-size:11px;padding:2px");
+
+    // ── TTS 播报开关与设置按钮 ──
+    tts_toggle_ = new QCheckBox("TTS播报");
+    tts_toggle_->setChecked(false);
+    tts_toggle_->setToolTip("启用弹幕/礼物/SC 实时语音朗读（需配置 Azure Key）");
+    connect(tts_toggle_, &QCheckBox::toggled, this, [this](bool checked) {
+        if (tts_manager_) {
+            tts_manager_->set_enabled(checked);
+        }
+        if (cfg_) {
+            cfg_->tts.enabled = checked;
+            cfg_->save();
+        }
+    });
+
+    btn_tts_settings_ = new QPushButton("⚙");
+    btn_tts_settings_->setToolTip("配置 Azure TTS 密钥、音色与播报选项");
+    btn_tts_settings_->setFixedWidth(24);
+    btn_tts_settings_->setStyleSheet("QPushButton { padding: 1px 3px; font-size: 11px; }");
+    connect(btn_tts_settings_, &QPushButton::clicked, this, &BiliDock::open_tts_settings);
+
     auto *bottom_row = new QHBoxLayout();
     bottom_row->setContentsMargins(0, 0, 0, 0);
     bottom_row->addWidget(status_bar_);
     bottom_row->addStretch();
+    bottom_row->addWidget(tts_toggle_);
+    bottom_row->addWidget(btn_tts_settings_);
+    bottom_row->addSpacing(8);
     bottom_row->addWidget(danmaku_toggle_);
     // 垂直分割：上方设置区固定高度 / 弹幕区可拖拽调整高度
     auto *splitter = new QSplitter(Qt::Vertical, this);
@@ -945,5 +1020,173 @@ void BiliDock::do_stop_live()
         btn_stop_->setEnabled(true);
         stream_status_->setText("B站停播失败，请重试");
         stream_status_->setStyleSheet("color:#F28B82;font-size:12px");
+    }
+}
+
+void BiliDock::open_tts_settings()
+{
+    if (!cfg_ || !tts_manager_) return;
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("TTS 语音播报设置");
+    dlg.setMinimumWidth(380);
+
+    auto *layout = new QVBoxLayout(&dlg);
+    auto *form = new QFormLayout();
+
+    // 1. Azure Key
+    auto *key_row = new QHBoxLayout();
+    auto *key_edit = new QLineEdit(QString::fromStdString(cfg_->tts.key));
+    key_edit->setEchoMode(QLineEdit::Password);
+    key_edit->setPlaceholderText("Azure Subscription Key");
+    auto *btn_toggle_echo = new QPushButton("👁");
+    btn_toggle_echo->setFixedWidth(28);
+    btn_toggle_echo->setToolTip("显示/隐藏 Key");
+    connect(btn_toggle_echo, &QPushButton::clicked, [key_edit]() {
+        key_edit->setEchoMode(key_edit->echoMode() == QLineEdit::Password ? QLineEdit::Normal : QLineEdit::Password);
+    });
+    key_row->addWidget(key_edit);
+    key_row->addWidget(btn_toggle_echo);
+    form->addRow("Azure Key:", key_row);
+
+    // 2. Region
+    auto *region_combo = new QComboBox();
+    region_combo->setEditable(true);
+    QStringList regions = {"eastasia", "southeastasia", "japaneast", "centralus", "eastus", "westus", "westeurope"};
+    region_combo->addItems(regions);
+    int reg_idx = region_combo->findText(QString::fromStdString(cfg_->tts.region));
+    if (reg_idx >= 0) region_combo->setCurrentIndex(reg_idx);
+    else region_combo->setEditText(QString::fromStdString(cfg_->tts.region));
+    form->addRow("服务区域 (Region):", region_combo);
+
+    // 3. Voice
+    auto *voice_combo = new QComboBox();
+    struct VoiceItem { QString label; QString id; };
+    std::vector<VoiceItem> voices = {
+        {"晓晓 (活泼女声)", "zh-CN-XiaoxiaoNeural"},
+        {"云希 (阳光男声)", "zh-CN-YunxiNeural"},
+        {"云健 (沉稳男声)", "zh-CN-YunjianNeural"},
+        {"晓伊 (温柔女声)", "zh-CN-XiaoyiNeural"},
+        {"云夏 (少年男声)", "zh-CN-YunxiaNeural"},
+        {"晓北 (东北话女声)", "zh-CN-liaoning-XiaobeiNeural"},
+        {"晓妮 (陕西话女声)", "zh-CN-shaanxi-XiaoniNeural"},
+        {"晓辰 (台湾国语)", "zh-TW-HsiaoChenNeural"},
+        {"晓佳 (粤语女声)", "zh-HK-HiuGaaiNeural"}
+    };
+    for (const auto &v : voices) {
+        voice_combo->addItem(v.label, v.id);
+    }
+    QString cur_voice = QString::fromStdString(cfg_->tts.voice);
+    int voice_idx = voice_combo->findData(cur_voice);
+    if (voice_idx >= 0) voice_combo->setCurrentIndex(voice_idx);
+    form->addRow("音色选择 (Voice):", voice_combo);
+
+    // 4. Rate
+    auto *rate_layout = new QHBoxLayout();
+    auto *rate_slider = new QSlider(Qt::Horizontal);
+    rate_slider->setRange(-50, 50);
+    rate_slider->setSingleStep(5);
+    int cur_rate = cfg_->tts.rate.empty() ? 0 : std::atoi(cfg_->tts.rate.c_str());
+    rate_slider->setValue(cur_rate);
+    auto *rate_val_label = new QLabel(QString("%1%").arg(cur_rate >= 0 ? QString("+%1").arg(cur_rate) : QString::number(cur_rate)));
+    connect(rate_slider, &QSlider::valueChanged, [rate_val_label](int val) {
+        rate_val_label->setText(QString("%1%").arg(val >= 0 ? QString("+%1").arg(val) : QString::number(val)));
+    });
+    rate_layout->addWidget(rate_slider);
+    rate_layout->addWidget(rate_val_label);
+    form->addRow("语速调节 (Rate):", rate_layout);
+
+    // 5. Volume
+    auto *vol_layout = new QHBoxLayout();
+    auto *vol_slider = new QSlider(Qt::Horizontal);
+    vol_slider->setRange(0, 100);
+    vol_slider->setSingleStep(5);
+    vol_slider->setValue(cfg_->tts.volume);
+    auto *vol_val_label = new QLabel(QString("%1%").arg(cfg_->tts.volume));
+    connect(vol_slider, &QSlider::valueChanged, [vol_val_label](int val) {
+        vol_val_label->setText(QString("%1%").arg(val));
+    });
+    vol_layout->addWidget(vol_slider);
+    vol_layout->addWidget(vol_val_label);
+    form->addRow("播报音量 (Volume):", vol_layout);
+
+    layout->addLayout(form);
+
+    // 6. Checkboxes Group
+    auto *grp_content = new QGroupBox("播报内容与策略");
+    auto *grp_layout = new QVBoxLayout(grp_content);
+    auto *chk_danmaku = new QCheckBox("朗读普通弹幕");
+    chk_danmaku->setChecked(cfg_->tts.read_danmaku);
+    auto *chk_gift = new QCheckBox("朗读礼物送礼");
+    chk_gift->setChecked(cfg_->tts.read_gift);
+    auto *chk_sc = new QCheckBox("朗读 SC 醒目留言 (高优先级)");
+    chk_sc->setChecked(cfg_->tts.read_sc);
+    auto *chk_merge = new QCheckBox("智能合并短弹幕 (节省额度与提升流畅度)");
+    chk_merge->setChecked(cfg_->tts.merge_enabled);
+
+    grp_layout->addWidget(chk_danmaku);
+    grp_layout->addWidget(chk_gift);
+    grp_layout->addWidget(chk_sc);
+    grp_layout->addWidget(chk_merge);
+    layout->addWidget(grp_content);
+
+    // 7. Test & Action Buttons
+    auto *act_row = new QHBoxLayout();
+    auto *btn_test = new QPushButton("🔊 试听测试");
+    auto *btn_clear = new QPushButton("⏹ 停止/清空");
+    connect(btn_test, &QPushButton::clicked, [this, key_edit, region_combo, voice_combo, rate_slider, vol_slider]() {
+        TtsConfig temp_cfg;
+        temp_cfg.enabled = true;
+        temp_cfg.key = key_edit->text().trimmed();
+        temp_cfg.region = region_combo->currentText().trimmed();
+        temp_cfg.voice = voice_combo->currentData().toString();
+        int r = rate_slider->value();
+        temp_cfg.rate = QString("%1%").arg(r >= 0 ? QString("+%1").arg(r) : QString::number(r));
+        temp_cfg.volume = vol_slider->value();
+        tts_manager_->update_config(temp_cfg);
+        tts_manager_->test_speak("感谢关注哔哩哔哩直播间，祝主播开播大吉！");
+    });
+    connect(btn_clear, &QPushButton::clicked, [this]() {
+        tts_manager_->stop_and_clear();
+        status_bar_->setText("TTS 队列已清空");
+    });
+    act_row->addWidget(btn_test);
+    act_row->addWidget(btn_clear);
+    act_row->addStretch();
+    layout->addLayout(act_row);
+
+    auto *btn_box = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+    connect(btn_box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(btn_box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    layout->addWidget(btn_box);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        cfg_->tts.key = key_edit->text().trimmed().toStdString();
+        cfg_->tts.region = region_combo->currentText().trimmed().toStdString();
+        cfg_->tts.voice = voice_combo->currentData().toString().toStdString();
+        int r = rate_slider->value();
+        cfg_->tts.rate = QString("%1%").arg(r >= 0 ? QString("+%1").arg(r) : QString::number(r)).toStdString();
+        cfg_->tts.volume = vol_slider->value();
+        cfg_->tts.read_danmaku = chk_danmaku->isChecked();
+        cfg_->tts.read_gift = chk_gift->isChecked();
+        cfg_->tts.read_sc = chk_sc->isChecked();
+        cfg_->tts.merge_enabled = chk_merge->isChecked();
+        cfg_->save();
+
+        TtsConfig c;
+        c.enabled = tts_toggle_->isChecked();
+        c.key = QString::fromStdString(cfg_->tts.key);
+        c.region = QString::fromStdString(cfg_->tts.region);
+        c.voice = QString::fromStdString(cfg_->tts.voice);
+        c.rate = QString::fromStdString(cfg_->tts.rate);
+        c.pitch = QString::fromStdString(cfg_->tts.pitch);
+        c.volume = cfg_->tts.volume;
+        c.read_danmaku = cfg_->tts.read_danmaku;
+        c.read_gift = cfg_->tts.read_gift;
+        c.read_sc = cfg_->tts.read_sc;
+        c.merge_enabled = cfg_->tts.merge_enabled;
+        tts_manager_->update_config(c);
+
+        status_bar_->setText("TTS 设置已保存");
     }
 }

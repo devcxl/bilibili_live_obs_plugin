@@ -23,3 +23,5 @@ uv.lock
 
 # --- C++ build ---
 build/
+build-*/
+

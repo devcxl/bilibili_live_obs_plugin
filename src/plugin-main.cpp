@@ -13,6 +13,7 @@
 #include "config-manager.h"
 #include "auth-service.h"
 #include "danmaku-ws.h"
+#include "tts/tts-manager.h"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("bili-live-obs", "en-US")
@@ -25,6 +26,7 @@ static UserService *s_user = nullptr;
 static LiveService *s_live = nullptr;
 static AuthService *s_auth = nullptr;
 static DanmakuWebSocket *s_danmaku_ws = nullptr;
+static TtsManager *s_tts = nullptr;
 
 static void init_services()
 {
@@ -37,6 +39,7 @@ static void init_services()
     s_auth = new AuthService(s_api, s_user, s_live, s_state);
     s_danmaku_ws = new DanmakuWebSocket();
     s_danmaku_ws->set_api(s_api);
+    s_tts = new TtsManager();
     s_user->init_current_user();
 
     if (s_user->has_valid_session()) {
@@ -49,6 +52,7 @@ static void init_services()
 
 static void destroy_services()
 {
+    delete s_tts;   s_tts = nullptr;
     delete s_auth;  s_auth = nullptr;
     delete s_danmaku_ws; s_danmaku_ws = nullptr;
     delete s_live;  s_live = nullptr;
@@ -66,6 +70,7 @@ static void dock_load()
     s_dock = new BiliDock(main);
     s_dock->set_services(s_auth, s_live, s_user, s_cfg);
     s_dock->set_danmaku_ws(s_danmaku_ws);
+    s_dock->set_tts_manager(s_tts);
 
     if (s_user->has_valid_session()) {
         auto saved = s_user->load_saved_config();

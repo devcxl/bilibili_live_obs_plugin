@@ -18,7 +18,7 @@ find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 
 # ---- Qt6 ----
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Multimedia)
 
 # ---- system libs ----
 find_package(PkgConfig REQUIRED)
@@ -42,6 +42,10 @@ set(SOURCES
   src/bili-dock.cpp
   src/danmaku-ws.cpp
   src/danmaku-display.cpp
+  src/tts/tts-cleaner.cpp
+  src/tts/azure-tts-backend.cpp
+  src/tts/pcm-audio-sink.cpp
+  src/tts/tts-manager.cpp
 )
 
 set(HEADERS
@@ -51,6 +55,12 @@ set(HEADERS
   src/bili-dock.h
   src/danmaku-ws.h
   src/danmaku-display.h
+  src/tts/tts-types.h
+  src/tts/tts-cleaner.h
+  src/tts/tts-backend.h
+  src/tts/azure-tts-backend.h
+  src/tts/pcm-audio-sink.h
+  src/tts/tts-manager.h
 )
 
 # ---- target ----
@@ -67,7 +77,7 @@ target_include_directories(bili-live-obs PRIVATE
 target_link_libraries(bili-live-obs PRIVATE
   OBS::libobs
   OBS::obs-frontend-api
-  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets
+  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Multimedia
   Threads::Threads
   ZLIB::ZLIB
   ${LIBCURL_LIBRARIES}
