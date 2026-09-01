@@ -405,82 +405,6 @@ ApiResult BilibiliApi::get_room_info(const std::string &room_id)
                    json{{"room_id", room_id}});
 }
 
-ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
-{
-    ApiResult res;
-    // 2026 规范：getDanmuInfo 需要 WBI 签名 + web_location 参数 + buvid3/buvid4 cookie
-    // 注意：不得混入主站登录态 SESSDATA Cookie，否则直播网关会触发 -352 风控拦截
-    std::string img_key, sub_key;
-    if (!get_wbi_keys(img_key, sub_key)) {
-        res.code = -1;
-        res.msg = "Failed to get WBI keys";
-        return res;
-    }
-
-    std::string buvid_cookie = "buvid3=0B6EC0D4-4CA7-36D8-4826-9EF6D08237DF80430infoc";
-    ApiResult buvid_res = get_buvid3();
-    if (buvid_res.ok && buvid_res.data.contains("data")) {
-        const auto &d = buvid_res.data["data"];
-        std::string b3 = d.value("b_3", "");
-        std::string b4 = d.value("b_4", "");
-        if (!b3.empty() && !b4.empty()) {
-            buvid_cookie = "buvid3=" + b3 + "; buvid4=" + b4;
-        }
-    }
-
-    json wbi_params = json{{"id", room_id}, {"type", 0}, {"web_location", "444.8"}};
-    std::string signed_query = sign_wbi(wbi_params, img_key, sub_key);
-    std::string full_url = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?" + signed_query;
-
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        res.code = -1;
-        res.msg = "curl_easy_init failed";
-        return res;
-    }
-
-    std::string response_body;
-    std::string referer_header = "referer: https://live.bilibili.com/" + room_id;
-    std::string origin_header = "origin: https://live.bilibili.com";
-
-    struct curl_slist *headers = nullptr;
-    headers = curl_slist_append(headers, "accept: application/json, text/plain, */*");
-    headers = curl_slist_append(headers, "accept-language: zh-CN,zh;q=0.9");
-    headers = curl_slist_append(headers, "user-agent: " BILI_USER_AGENT);
-    headers = curl_slist_append(headers, origin_header.c_str());
-    headers = curl_slist_append(headers, referer_header.c_str());
-
-    curl_easy_setopt(curl, CURLOPT_URL, full_url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_COOKIE, buvid_cookie.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    CURLcode cc = curl_easy_perform(curl);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-
-    if (cc != CURLE_OK) {
-        res.code = -1;
-        res.msg = curl_easy_strerror(cc);
-        return res;
-    }
-
-    try {
-        auto j = json::parse(response_body);
-        res.ok = true;
-        res.data = j;
-        res.code = j.value("code", -1);
-        res.msg = j.value("msg", j.value("message", ""));
-    } catch (...) {
-        res.msg = "JSON decode error";
-    }
-
-    return res;
-}
-
 ApiResult BilibiliApi::get_area_list()
 {
     return do_get("https://api.live.bilibili.com/room/v1/Area/getList",
@@ -570,11 +494,6 @@ ApiResult BilibiliApi::stop_live(const std::string &room_id)
 ApiResult BilibiliApi::get_server_time()
 {
     return do_get("https://api.bilibili.com/x/report/click/now");
-}
-
-ApiResult BilibiliApi::get_buvid3()
-{
-    return do_get("https://api.bilibili.com/x/frontend/finger/spi");
 }
 
 ApiResult BilibiliApi::logout_session()

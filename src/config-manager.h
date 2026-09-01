@@ -46,7 +46,6 @@ struct TtsConfigData {
 };
 
 struct DanmakuConfigData {
-    int mode = 1;                          // 0: Web 网页端, 1: 开放平台官方直连 (Open Live, 默认推荐)
     int64_t open_live_app_id = 0;          // 开放平台 App ID
     std::string open_live_access_key;      // 开放平台 AccessKey ID
     std::string open_live_secret;          // 开放平台 AccessKey Secret (加密落盘)

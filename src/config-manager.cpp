@@ -318,7 +318,6 @@ void ConfigManager::load()
 
     if (j.contains("danmaku")) {
         const auto &dj = j["danmaku"];
-        danmaku.mode = dj.value("mode", 1);
         danmaku.open_live_app_id = dj.value("open_live_app_id", 0LL);
         danmaku.open_live_access_key = dj.value("open_live_access_key", "");
         danmaku.open_live_secret = decrypt(dj.value("open_live_secret", ""));
@@ -359,7 +358,6 @@ void ConfigManager::save()
     j["tts"] = tj;
 
     json dj;
-    dj["mode"] = danmaku.mode;
     dj["open_live_app_id"] = danmaku.open_live_app_id;
     dj["open_live_access_key"] = danmaku.open_live_access_key;
     dj["open_live_secret"] = encrypt(danmaku.open_live_secret);

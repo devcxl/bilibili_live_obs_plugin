@@ -160,6 +160,9 @@ void TtsManager::on_entry_received(const EntryMessage &msg)
     );
     if (formatted.isEmpty()) return;
 
+    blog(LOG_INFO, "[TTS-Entry] 进房播报入队: user=%s guard=%d text=%s",
+         msg.username.c_str(), msg.guard_level, formatted.toUtf8().constData());
+
     TtsMessage item;
     item.id = next_id_++;
     item.priority = TtsPriority::Entry;

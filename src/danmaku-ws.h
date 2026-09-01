@@ -19,9 +19,9 @@
 
 // ─── 弹幕消息 ───
 struct DanmakuMessage {
-    std::string cmd;           // "LIVE_OPEN_PLATFORM_DM" 或 "DANMU_MSG"
+    std::string cmd;           // "LIVE_OPEN_PLATFORM_DM"
     std::string username;      // 发送者昵称
-    std::string uid;           // 发送者 UID / OpenID
+    std::string uid;           // 发送者 OpenID
     std::string message;       // 弹幕文本
     std::string fan_badge;     // 粉丝勋章名（可选）
     int fan_badge_level = 0;   // 粉丝勋章等级
@@ -47,7 +47,7 @@ struct SuperChatMessage {
 // ─── 进房与互动消息 ───
 struct EntryMessage {
     std::string username;      // 观众昵称
-    std::string uid;           // 观众 UID / OpenID
+    std::string uid;           // 观众 OpenID
     int guard_level = 0;       // 大航海等级：0=无，1=总督，2=提督，3=舰长
     std::string medal_name;    // 粉丝勋章名
     int medal_level = 0;       // 粉丝勋章等级
@@ -60,7 +60,7 @@ Q_DECLARE_METATYPE(GiftMessage)
 Q_DECLARE_METATYPE(SuperChatMessage)
 Q_DECLARE_METATYPE(EntryMessage)
 
-// ─── WebSocket 长连接管理客户端 ───
+// ─── B站开放平台 (Open Live) 官方长连接客户端 ───
 class DanmakuWebSocket : public QObject {
     Q_OBJECT
 public:
@@ -72,7 +72,7 @@ public:
     void set_config(ConfigManager *cfg);
 
     // 生命周期管理
-    void connect_to_room(const std::string &room_id);
+    void connect_to_room(const std::string &room_id = "");
     void disconnect_from_room();
     [[nodiscard]] bool is_connected() const;
     [[nodiscard]] int popularity() const;
@@ -101,10 +101,7 @@ private:
     void start_reconnect();
     void stop_reconnect();
 
-    // 异步连接逻辑
-    void connect_via_web(uint64_t gen, const std::string &room_id);
-    void connect_via_open_live(uint64_t gen);
-    void on_danmu_info_ready(uint64_t gen, const ApiResult &res);
+    void connect_async(uint64_t gen);
 
     // 成员变量
     QWebSocket *ws_ = nullptr;
@@ -117,11 +114,6 @@ private:
     std::thread fetch_thread_;
 
     std::string room_id_;
-    std::string token_;
-    std::string host_;
-    int wss_port_ = 443;
-
-    // 官方开放平台特定字段
     std::string open_game_id_;
     std::string open_auth_body_;
 

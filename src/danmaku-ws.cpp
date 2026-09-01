@@ -68,23 +68,13 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
         fetch_thread_.join();
     }
 
-    // 判断模式：mode == 1 (Open Live 官方直连模式)
-    bool is_open_live = (cfg_ && cfg_->danmaku.mode == 1);
-
-    if (is_open_live) {
-        blog(LOG_INFO, "[danmaku] using Open Live official protocol");
-        fetch_thread_ = std::thread([this, my_gen]() {
-            connect_via_open_live(my_gen);
-        });
-    } else {
-        blog(LOG_INFO, "[danmaku] using Web private protocol for room %s", saved_room_id.c_str());
-        fetch_thread_ = std::thread([this, my_gen, saved_room_id]() {
-            connect_via_web(my_gen, saved_room_id);
-        });
-    }
+    blog(LOG_INFO, "[danmaku-open] connecting to Bilibili Open Live platform");
+    fetch_thread_ = std::thread([this, my_gen]() {
+        connect_async(my_gen);
+    });
 }
 
-void DanmakuWebSocket::connect_via_open_live(uint64_t gen)
+void DanmakuWebSocket::connect_async(uint64_t gen)
 {
     if (!cfg_) {
         QMetaObject::invokeMethod(this, [this]() {
@@ -118,7 +108,7 @@ void DanmakuWebSocket::connect_via_open_live(uint64_t gen)
         open_auth_body_ = res.auth_body;
 
         if (res.wss_links.empty()) {
-            blog(LOG_WARNING, "[danmaku-open] no wss_link returned");
+            blog(LOG_WARNING, "[danmaku-open] no wss_link returned from official open platform");
             emit connection_state_changed(false, 0);
             start_reconnect();
             return;
@@ -133,57 +123,6 @@ void DanmakuWebSocket::connect_via_open_live(uint64_t gen)
 
         ws_->open(QUrl(wss_url));
     }, Qt::QueuedConnection);
-}
-
-void DanmakuWebSocket::connect_via_web(uint64_t gen, const std::string &room_id)
-{
-    if (!api_) {
-        QMetaObject::invokeMethod(this, [this]() {
-            emit connection_state_changed(false, 0);
-        }, Qt::QueuedConnection);
-        return;
-    }
-
-    ApiResult res = api_->get_danmu_info(room_id);
-    QMetaObject::invokeMethod(this, [this, gen, res]() {
-        on_danmu_info_ready(gen, res);
-    }, Qt::QueuedConnection);
-}
-
-void DanmakuWebSocket::on_danmu_info_ready(uint64_t gen, const ApiResult &res)
-{
-    if (gen != connect_gen_.load() || intentional_disconnect_) {
-        return;
-    }
-
-    if (res.code != 0) {
-        blog(LOG_WARNING, "[danmaku-web] getDanmuInfo failed: %s (code=%d), using fallback node",
-             res.msg.c_str(), res.code);
-        // 兜底连接公开弹幕服务器
-        host_ = "broadcastlv.chat.bilibili.com";
-        wss_port_ = 443;
-        token_.clear();
-    } else {
-        const auto &d = res.data;
-        token_ = d.value("token", "");
-        if (d.contains("host_list") && d["host_list"].is_array() && !d["host_list"].empty()) {
-            const auto &h = d["host_list"][0];
-            host_ = h.value("host", "broadcastlv.chat.bilibili.com");
-            wss_port_ = h.value("wss_port", 443);
-        } else {
-            host_ = "broadcastlv.chat.bilibili.com";
-            wss_port_ = 443;
-        }
-    }
-
-    QString url_str = QString("wss://%1:%2/sub").arg(
-        QString::fromStdString(host_),
-        QString::number(wss_port_));
-
-    blog(LOG_INFO, "[danmaku-web] connecting to %s for room %s",
-         url_str.toUtf8().constData(), room_id_.c_str());
-
-    ws_->open(QUrl(url_str));
 }
 
 void DanmakuWebSocket::disconnect_from_room()
@@ -215,8 +154,6 @@ void DanmakuWebSocket::disconnect_from_room()
     authenticated_ = false;
     popularity_ = 0;
     room_id_.clear();
-    token_.clear();
-    host_.clear();
     seq_ = 1;
     reconnect_attempts_ = 0;
 
@@ -225,7 +162,7 @@ void DanmakuWebSocket::disconnect_from_room()
 
 void DanmakuWebSocket::on_ws_connected()
 {
-    blog(LOG_INFO, "[danmaku] ws transport connected, sending auth");
+    blog(LOG_INFO, "[danmaku-open] official websocket connected, sending auth");
     send_auth_packet();
 }
 
@@ -235,7 +172,7 @@ void DanmakuWebSocket::on_ws_disconnected()
     authenticated_ = false;
     stop_heartbeat();
 
-    blog(LOG_INFO, "[danmaku] ws disconnected (intentional=%d)", intentional_disconnect_);
+    blog(LOG_INFO, "[danmaku-open] websocket disconnected (intentional=%d)", intentional_disconnect_);
 
     if (was_auth) {
         emit connection_state_changed(false, 0);
@@ -248,57 +185,32 @@ void DanmakuWebSocket::on_ws_disconnected()
 
 void DanmakuWebSocket::on_ws_error(QAbstractSocket::SocketError error)
 {
-    blog(LOG_WARNING, "[danmaku] ws error: %s (code=%d)",
+    blog(LOG_WARNING, "[danmaku-open] websocket error: %s (code=%d)",
          ws_->errorString().toUtf8().constData(), static_cast<int>(error));
 }
 
 void DanmakuWebSocket::on_ws_ssl_errors(const QList<QSslError> &errors)
 {
     for (const auto &e : errors) {
-        blog(LOG_WARNING, "[danmaku] ssl error: %s", e.errorString().toUtf8().constData());
+        blog(LOG_WARNING, "[danmaku-open] ssl error: %s", e.errorString().toUtf8().constData());
     }
 }
 
 void DanmakuWebSocket::send_auth_packet()
 {
-    // 如果是 Open Live 官方模式，直接发送官方 auth_body
-    if (cfg_ && cfg_->danmaku.mode == 1 && !open_auth_body_.empty()) {
-        blog(LOG_INFO, "[danmaku] sending Open Live official auth packet");
-        QByteArray body = QByteArray::fromStdString(open_auth_body_);
-        QByteArray packet = danmaku::DanmakuCodec::encode_packet(
-            danmaku::OpCode::Auth,
-            danmaku::ProtoVer::Normal,
-            body,
-            seq_++
-        );
-        ws_->sendBinaryMessage(packet);
+    if (open_auth_body_.empty()) {
+        blog(LOG_WARNING, "[danmaku-open] auth_body empty, aborting auth");
         return;
     }
 
-    // Web 模式：发送标准认证包
-    int64_t rid = 0;
-    try {
-        rid = std::stoll(room_id_);
-    } catch (...) {
-        rid = 0;
-    }
-
-    json auth_json;
-    auth_json["uid"] = 0;
-    auth_json["roomid"] = rid;
-    auth_json["protover"] = static_cast<int>(danmaku::ProtoVer::Brotli);
-    auth_json["platform"] = "web";
-    auth_json["type"] = 2;
-    auth_json["key"] = token_;
-
-    QByteArray body = QByteArray::fromStdString(auth_json.dump());
+    blog(LOG_INFO, "[danmaku-open] sending official auth packet");
+    QByteArray body = QByteArray::fromStdString(open_auth_body_);
     QByteArray packet = danmaku::DanmakuCodec::encode_packet(
         danmaku::OpCode::Auth,
         danmaku::ProtoVer::Normal,
         body,
         seq_++
     );
-
     ws_->sendBinaryMessage(packet);
 }
 
@@ -311,13 +223,13 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
             auto j = json::parse(pkt.body.toStdString(), nullptr, false);
             if (!j.is_discarded() && j.value("code", -1) == 0) {
                 authenticated_ = true;
-                blog(LOG_INFO, "[danmaku] auth success! listening for messages");
+                blog(LOG_INFO, "[danmaku-open] auth success! listening for official live events");
                 start_heartbeat();
                 stop_reconnect();
                 reconnect_attempts_ = 0;
                 emit connection_state_changed(true, popularity_);
             } else {
-                blog(LOG_WARNING, "[danmaku] auth failed: %s", pkt.body.toStdString().c_str());
+                blog(LOG_WARNING, "[danmaku-open] auth failed: %s", pkt.body.toStdString().c_str());
                 ws_->close();
             }
         } else if (pkt.op == static_cast<uint32_t>(danmaku::OpCode::HeartbeatReply)) {
@@ -398,7 +310,7 @@ void DanmakuWebSocket::start_reconnect()
     delay = std::min(delay, RECONNECT_MAX_DELAY_MS);
     reconnect_attempts_++;
 
-    blog(LOG_INFO, "[danmaku] scheduling reconnect in %d ms (attempt %d)",
+    blog(LOG_INFO, "[danmaku-open] scheduling reconnect in %d ms (attempt %d)",
          delay, reconnect_attempts_);
     reconnect_timer_->start(delay);
 }

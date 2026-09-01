@@ -46,7 +46,6 @@ public:
     ApiResult get_room_id_by_uid(const std::string &uid);
     ApiResult get_room_info(const std::string &room_id);
     ApiResult get_area_list();
-    ApiResult get_danmu_info(const std::string &room_id);
     ApiResult update_title(const std::string &room_id, const std::string &title);
     ApiResult update_area(const std::string &room_id, const std::string &area_id);
 
@@ -56,7 +55,6 @@ public:
 
     // Misc
     ApiResult get_server_time();
-    ApiResult get_buvid3();
     // 注销 B 站会话（使 SESSDATA 服务端失效），需携带当前登录 cookie + csrf
     ApiResult logout_session();
 
