@@ -54,7 +54,7 @@ static const int TOTAL_KEY_LEN = 32; // encryption_key(16) + hmac_key(16)
 
 static std::vector<unsigned char> derive_key(const std::string &base_key)
 {
-    // Use PBKDF2-HMAC-SHA256 with a fixed salt to derive a 32-byte key
+    // 使用 PBKDF2-HMAC-SHA1 派生 32 字节密钥（前 16 字节 AES-128 加密，后 16 字节 HMAC-SHA256 签名）
     const unsigned char salt[] = "bili-live-obs-salt";
     std::vector<unsigned char> derived(TOTAL_KEY_LEN);
     PKCS5_PBKDF2_HMAC_SHA1(
@@ -153,11 +153,17 @@ std::string ConfigManager::load_or_create_key()
     // ensure directory exists
     std::string dir = config_dir();
     mkdir(dir.c_str(), 0700);
-    std::ofstream out(kp, std::ios::binary);
-    if (out) {
-        out.write(key.data(), key.size());
+
+    std::string tmp_kp = kp + ".tmp";
+    {
+        std::ofstream out(tmp_kp, std::ios::binary | std::ios::trunc);
+        if (out) {
+            out.write(key.data(), key.size());
+            out.flush();
+        }
     }
-    chmod(kp.c_str(), S_IRUSR | S_IWUSR);
+    chmod(tmp_kp.c_str(), S_IRUSR | S_IWUSR);
+    std::rename(tmp_kp.c_str(), kp.c_str());
     return key;
 }
 
@@ -307,7 +313,19 @@ void ConfigManager::save()
     }
     j["users"] = uj;
 
-    std::ofstream out(config_path());
-    if (out.is_open())
+    std::string dir = config_dir();
+    mkdir(dir.c_str(), 0700);
+
+    std::string target_path = config_path();
+    std::string tmp_path = target_path + ".tmp";
+
+    {
+        std::ofstream out(tmp_path, std::ios::trunc);
+        if (!out.is_open()) return;
         out << j.dump(2);
+        out.flush();
+    }
+
+    // 原子替换，防止写入中断导致原配置文件损坏
+    std::rename(tmp_path.c_str(), target_path.c_str());
 }
