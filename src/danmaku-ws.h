@@ -88,6 +88,7 @@ private:
     void start_reconnect();
     void stop_reconnect();
     QByteArray brotli_decompress(const QByteArray &compressed);
+    QByteArray zlib_decompress(const QByteArray &compressed);
     static QByteArray build_packet_header(uint32_t packet_len, uint16_t protover,
                                            uint32_t op, uint32_t seq);
 

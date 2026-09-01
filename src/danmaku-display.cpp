@@ -3,7 +3,56 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QAbstractItemView>
+#include <QStyledItemDelegate>
+#include <QPainter>
+#include <QTextDocument>
 #include <algorithm>
+#include <cmath>
+
+// ── 自定义 HTML 富文本 Item Delegate ──
+class DanmakuHtmlDelegate : public QStyledItemDelegate {
+public:
+    explicit DanmakuHtmlDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+
+        painter->save();
+
+        // 绘制背景（如 SC 醒目留言的高亮背景色）
+        QVariant bg = index.data(Qt::BackgroundRole);
+        if (bg.canConvert<QBrush>()) {
+            painter->fillRect(opt.rect, bg.value<QBrush>());
+        }
+
+        // 富文本渲染
+        QTextDocument doc;
+        doc.setDocumentMargin(2);
+        doc.setDefaultStyleSheet("body { font-family: sans-serif; font-size: 12px; }");
+        doc.setHtml(opt.text);
+        doc.setTextWidth(opt.rect.width());
+
+        painter->translate(opt.rect.topLeft());
+        QRect clip(0, 0, opt.rect.width(), opt.rect.height());
+        doc.drawContents(painter, clip);
+
+        painter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+
+        QTextDocument doc;
+        doc.setDocumentMargin(2);
+        doc.setDefaultStyleSheet("body { font-family: sans-serif; font-size: 12px; }");
+        doc.setHtml(opt.text);
+        int width = opt.rect.width() > 0 ? opt.rect.width() : 200;
+        doc.setTextWidth(width);
+        return QSize(width, static_cast<int>(std::ceil(doc.size().height())) + 2);
+    }
+};
 
 DanmakuDisplay::DanmakuDisplay(QWidget *parent)
     : QWidget(parent)
@@ -34,6 +83,7 @@ DanmakuDisplay::DanmakuDisplay(QWidget *parent)
 
     // ── 弹幕列表 ──
     list_widget_ = new QListWidget();
+    list_widget_->setItemDelegate(new DanmakuHtmlDelegate(list_widget_));
     list_widget_->setStyleSheet(
         "QListWidget {"
         "  background: #2b2b2b;"
@@ -72,32 +122,25 @@ void DanmakuDisplay::append_danmaku(const DanmakuMessage &msg)
             low.lightnessF() + (high.lightnessF() - low.lightnessF()) * t);
     }
 
-    // 富文本：仅昵称着色，消息文本保持默认色（QListWidget item 不支持富文本，用 QLabel item widget）
-    QString text = QString("<span style=\"color:%1\">%2</span>: %3")
+    // 富文本：仅昵称着色，消息文本保持默认色
+    QString text = QString("<span style=\"color:%1\">%2</span>: <span style=\"color:#e0e0e0\">%3</span>")
         .arg(name_color.name(),
              QString::fromStdString(msg.username).toHtmlEscaped(),
              QString::fromStdString(msg.message).toHtmlEscaped());
-    auto *item = new QListWidgetItem();
-    auto *label = new QLabel(text);
-    label->setTextFormat(Qt::RichText);
-    label->setStyleSheet("background: transparent; padding: 0 4px;");
+    auto *item = new QListWidgetItem(text);
     list_widget_->insertItem(0, item);
-    list_widget_->setItemWidget(item, label);
     trim_items();
 }
 
 void DanmakuDisplay::append_gift(const GiftMessage &msg)
 {
-    QString text = QString("[礼物] %1 %2 %3%4")
-        .arg(QString::fromStdString(msg.username),
-             QString::fromStdString(msg.action),
-             QString::fromStdString(msg.gift_name))
-        .arg(msg.num > 1 ? QString(" x%1").arg(msg.num) : "");
-    if (msg.combo_num > 1) {
-        text += QString(" (连送%1)").arg(msg.combo_num);
-    }
+    QString text = QString("<span style=\"color:#4FC3F7\">[礼物] %1 %2 %3%4%5</span>")
+        .arg(QString::fromStdString(msg.username).toHtmlEscaped(),
+             QString::fromStdString(msg.action).toHtmlEscaped(),
+             QString::fromStdString(msg.gift_name).toHtmlEscaped())
+        .arg(msg.num > 1 ? QString(" x%1").arg(msg.num) : "")
+        .arg(msg.combo_num > 1 ? QString(" (连送%1)").arg(msg.combo_num) : "");
     auto *item = new QListWidgetItem(text);
-    item->setForeground(QColor("#4FC3F7"));  // 蓝色
     list_widget_->insertItem(0, item);
     trim_items();
 }
@@ -105,12 +148,11 @@ void DanmakuDisplay::append_gift(const GiftMessage &msg)
 void DanmakuDisplay::append_super_chat(const SuperChatMessage &msg)
 {
     double yuan = msg.price / 100.0;
-    QString text = QString("[SC ¥%1] %2: %3")
+    QString text = QString("<span style=\"color:#FFB74D\">[SC ¥%1] %2: %3</span>")
         .arg(yuan, 0, 'f', 2)
-        .arg(QString::fromStdString(msg.username),
-             QString::fromStdString(msg.message));
+        .arg(QString::fromStdString(msg.username).toHtmlEscaped(),
+             QString::fromStdString(msg.message).toHtmlEscaped());
     auto *item = new QListWidgetItem(text);
-    item->setForeground(QColor("#FFB74D"));  // 金色
     item->setBackground(QColor("#3d2e1a"));  // 深色背景
     list_widget_->insertItem(0, item);
     trim_items();
