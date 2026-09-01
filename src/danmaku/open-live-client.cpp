@@ -138,7 +138,7 @@ OpenLiveStartResult OpenLiveClient::start_app(int64_t app_id,
     std::string body_str = req_body.dump();
 
     auto [code_err, resp_str] = do_signed_post(
-        "https://live-open.bilibili.com/v2/app/start",
+        "https://live-open.biliapi.com/v2/app/start",
         body_str, access_key, access_secret
     );
 
@@ -189,7 +189,7 @@ bool OpenLiveClient::send_heartbeat(const std::string &game_id,
         {"game_id", game_id}
     };
     auto [code_err, resp_str] = do_signed_post(
-        "https://live-open.bilibili.com/v2/app/heartbeat",
+        "https://live-open.biliapi.com/v2/app/heartbeat",
         req_body.dump(), access_key, access_secret
     );
     return (code_err == 0);
@@ -207,7 +207,7 @@ bool OpenLiveClient::end_app(int64_t app_id,
         {"game_id", game_id}
     };
     auto [code_err, resp_str] = do_signed_post(
-        "https://live-open.bilibili.com/v2/app/end",
+        "https://live-open.biliapi.com/v2/app/end",
         req_body.dump(), access_key, access_secret
     );
     return (code_err == 0);
