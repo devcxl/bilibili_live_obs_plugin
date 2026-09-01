@@ -430,21 +430,6 @@ void BiliDock::init_ui()
     danmaku_display_->hide();
     danmaku_layout->addWidget(danmaku_display_);
 
-    danmaku_toggle_ = new QCheckBox("启用弹幕");
-    danmaku_toggle_->setChecked(false);
-    danmaku_toggle_->setEnabled(false);
-    danmaku_toggle_->setToolTip("开播后可查看实时弹幕，弹幕区域可拖拽调整高度");
-    connect(danmaku_toggle_, &QCheckBox::toggled, this, [this](bool checked) {
-        if (!checked && danmaku_ws_) {
-            danmaku_ws_->disconnect_from_room();
-        } else if (checked && bili_live_started_) {
-            // 关闭后重新开启必须恢复连接：连接只在开播/恢复时发起，
-            // 若开启分支不补发，重新勾选后永远收不到弹幕
-            start_danmaku();
-        }
-        if (danmaku_display_) danmaku_display_->setVisible(checked);
-    });
-
     status_bar_ = new QLabel("就绪");
     status_bar_->setStyleSheet("color:#666;font-size:11px;padding:2px");
 
@@ -474,8 +459,6 @@ void BiliDock::init_ui()
     bottom_row->addStretch();
     bottom_row->addWidget(tts_toggle_);
     bottom_row->addWidget(btn_tts_settings_);
-    bottom_row->addSpacing(8);
-    bottom_row->addWidget(danmaku_toggle_);
     // 垂直分割：上方设置区固定高度 / 弹幕区可拖拽调整高度
     auto *splitter = new QSplitter(Qt::Vertical, this);
     splitter->addWidget(upper_);
@@ -588,7 +571,6 @@ void BiliDock::on_login_done(const QJsonObject &data)
     restoring_ = false;
 
     btn_header_logout_->show();
-    danmaku_toggle_->setEnabled(true);
     status_bar_->setText("已登录 — 就绪");
 
     reset_upper_height();
@@ -712,10 +694,6 @@ void BiliDock::set_logged_out()
     sub_combo_->clear();
     title_edit_->clear();
     if (btn_header_logout_) btn_header_logout_->hide();
-    if (danmaku_toggle_) {
-        danmaku_toggle_->setChecked(false);
-        danmaku_toggle_->setEnabled(false);
-    }
     if (danmaku_display_) danmaku_display_->hide();
     if (danmaku_ws_) danmaku_ws_->disconnect_from_room();
 
@@ -768,11 +746,10 @@ void BiliDock::restore_live_state()
     }
 }
 
-// 发起弹幕连接：开播时 / 弹幕开关重新勾选时共用。
-// 需已开播且开关处于勾选状态，否则不连接（无房间可连）。
+// 发起弹幕连接：开播时 / 恢复开播时自动调用
 void BiliDock::start_danmaku()
 {
-    if (!danmaku_ws_ || !danmaku_display_ || !live_ || !danmaku_toggle_->isChecked()) return;
+    if (!danmaku_ws_ || !danmaku_display_ || !live_) return;
     std::string room_id = live_->get_room_id();
     if (room_id.empty()) return;
     danmaku_ws_->connect_to_room(room_id);

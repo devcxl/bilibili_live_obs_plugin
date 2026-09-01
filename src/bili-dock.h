@@ -76,7 +76,6 @@ private:
 
     DanmakuWebSocket *danmaku_ws_ = nullptr;
     DanmakuDisplay *danmaku_display_ = nullptr;
-    QCheckBox *danmaku_toggle_ = nullptr;
 
     TtsManager *tts_manager_ = nullptr;
     QCheckBox *tts_toggle_ = nullptr;
