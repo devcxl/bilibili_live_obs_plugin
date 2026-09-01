@@ -449,10 +449,9 @@ void BiliDock::init_ui()
         }
     });
 
-    btn_tts_settings_ = new QPushButton("⚙");
+    btn_tts_settings_ = new QPushButton("TTS设置");
     btn_tts_settings_->setToolTip("配置 Azure TTS 密钥、音色与播报选项");
-    btn_tts_settings_->setFixedWidth(24);
-    btn_tts_settings_->setStyleSheet("QPushButton { padding: 1px 3px; font-size: 11px; }");
+    btn_tts_settings_->setStyleSheet("QPushButton { padding: 1px 5px; font-size: 11px; }");
     connect(btn_tts_settings_, &QPushButton::clicked, this, &BiliDock::open_tts_settings);
 
     auto *bottom_row = new QHBoxLayout();
@@ -768,11 +767,11 @@ void BiliDock::start_danmaku()
     }
 
     if (room_id.empty()) {
-        danmaku_display_->set_status_text("❌ 未获取到房间号", "color: #F28B82; font-size: 11px; padding: 0 4px;");
+        danmaku_display_->set_status_text("未获取到房间号", "color: #F28B82; font-size: 11px; padding: 0 4px;");
         return;
     }
 
-    danmaku_display_->set_status_text("🟡 正在连接...", "color: #FFB74D; font-size: 11px; padding: 0 4px;");
+    danmaku_display_->set_status_text("[连接中...]", "color: #FFB74D; font-size: 11px; padding: 0 4px;");
     danmaku_ws_->connect_to_room(room_id);
     danmaku_display_->show();
 }
@@ -1042,8 +1041,8 @@ void BiliDock::open_tts_settings()
     auto *key_edit = new QLineEdit(QString::fromStdString(cfg_->tts.key));
     key_edit->setEchoMode(QLineEdit::Password);
     key_edit->setPlaceholderText("Azure Subscription Key");
-    auto *btn_toggle_echo = new QPushButton("👁");
-    btn_toggle_echo->setFixedWidth(28);
+    auto *btn_toggle_echo = new QPushButton("显示");
+    btn_toggle_echo->setFixedWidth(44);
     btn_toggle_echo->setToolTip("显示/隐藏 Key");
     connect(btn_toggle_echo, &QPushButton::clicked, [key_edit]() {
         key_edit->setEchoMode(key_edit->echoMode() == QLineEdit::Password ? QLineEdit::Normal : QLineEdit::Password);
@@ -1153,8 +1152,8 @@ void BiliDock::open_tts_settings()
 
     // 7. Test & Action Buttons
     auto *act_row = new QHBoxLayout();
-    auto *btn_test = new QPushButton("🔊 试听测试");
-    auto *btn_clear = new QPushButton("⏹ 停止/清空");
+    auto *btn_test = new QPushButton("试听测试");
+    auto *btn_clear = new QPushButton("停止/清空");
     connect(btn_test, &QPushButton::clicked, [this, key_edit, region_combo, voice_combo, rate_slider, vol_slider]() {
         TtsConfig temp_cfg;
         temp_cfg.enabled = true;

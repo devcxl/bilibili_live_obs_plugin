@@ -103,6 +103,7 @@ void DanmakuWebSocket::on_danmu_info_ready(uint64_t gen, const ApiResult &res)
         || !res.data["data"].is_object()) {
         blog(LOG_WARNING, "[danmaku] getDanmuInfo failed: code=%d msg=%s",
              res.code, res.msg.c_str());
+        emit connection_state_changed(false, 0);
         start_reconnect();
         return;
     }
