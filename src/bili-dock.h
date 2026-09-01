@@ -51,6 +51,7 @@ private slots:
     void do_start_live();
     void do_stop_live();
     void open_tts_settings();
+    void open_danmaku_settings();
 
 private:
     void init_ui();
@@ -76,6 +77,7 @@ private:
 
     DanmakuWebSocket *danmaku_ws_ = nullptr;
     DanmakuDisplay *danmaku_display_ = nullptr;
+    QPushButton *btn_danmaku_settings_ = nullptr;
 
     TtsManager *tts_manager_ = nullptr;
     QCheckBox *tts_toggle_ = nullptr;

@@ -15,6 +15,7 @@
 #include <QSlider>
 #include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QSpinBox>
 
 #include <obs-frontend-api.h>
 #include <obs-module.h>
@@ -454,12 +455,19 @@ void BiliDock::init_ui()
     btn_tts_settings_->setStyleSheet("QPushButton { padding: 1px 5px; font-size: 11px; }");
     connect(btn_tts_settings_, &QPushButton::clicked, this, &BiliDock::open_tts_settings);
 
+    btn_danmaku_settings_ = new QPushButton("弹幕设置");
+    btn_danmaku_settings_->setToolTip("配置弹幕协议模式（Open Live 官方直连 / Web）与凭据");
+    btn_danmaku_settings_->setStyleSheet("QPushButton { padding: 1px 5px; font-size: 11px; }");
+    connect(btn_danmaku_settings_, &QPushButton::clicked, this, &BiliDock::open_danmaku_settings);
+
     auto *bottom_row = new QHBoxLayout();
     bottom_row->setContentsMargins(0, 0, 0, 0);
     bottom_row->addWidget(status_bar_);
     bottom_row->addStretch();
     bottom_row->addWidget(tts_toggle_);
     bottom_row->addWidget(btn_tts_settings_);
+    bottom_row->addSpacing(6);
+    bottom_row->addWidget(btn_danmaku_settings_);
     // 垂直分割：上方设置区固定高度 / 弹幕区可拖拽调整高度
     auto *splitter = new QSplitter(Qt::Vertical, this);
     splitter->addWidget(upper_);
@@ -1212,5 +1220,109 @@ void BiliDock::open_tts_settings()
         tts_manager_->update_config(c);
 
         status_bar_->setText("TTS 设置已保存");
+    }
+}
+
+void BiliDock::open_danmaku_settings()
+{
+    if (!cfg_) return;
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("弹幕与开放平台设置");
+    dlg.setMinimumWidth(400);
+
+    auto *layout = new QVBoxLayout(&dlg);
+
+    // 1. 协议连接模式
+    auto *form_mode = new QFormLayout();
+    auto *mode_combo = new QComboBox();
+    mode_combo->addItem("B站开放平台 (Open Live 官方直连，100%不丢包)", 1);
+    mode_combo->addItem("Web 网页直连模式 (免配置)", 0);
+    int cur_idx = mode_combo->findData(cfg_->danmaku.mode);
+    if (cur_idx >= 0) mode_combo->setCurrentIndex(cur_idx);
+    form_mode->addRow("协议模式:", mode_combo);
+    layout->addLayout(form_mode);
+
+    // 2. 开放平台凭证 GroupBox
+    auto *grp_open_live = new QGroupBox("B站开放平台 (Open Live) 开发者凭据");
+    auto *form_open = new QFormLayout(grp_open_live);
+
+    auto *app_id_edit = new QLineEdit();
+    if (cfg_->danmaku.open_live_app_id > 0) {
+        app_id_edit->setText(QString::number(cfg_->danmaku.open_live_app_id));
+    }
+    app_id_edit->setPlaceholderText("项目 App ID（例如: 1681234567890）");
+    form_open->addRow("项目 App ID:", app_id_edit);
+
+    auto *ak_edit = new QLineEdit(QString::fromStdString(cfg_->danmaku.open_live_access_key));
+    ak_edit->setPlaceholderText("Access Key ID");
+    form_open->addRow("Access Key ID:", ak_edit);
+
+    auto *sk_row = new QHBoxLayout();
+    auto *sk_edit = new QLineEdit(QString::fromStdString(cfg_->danmaku.open_live_secret));
+    sk_edit->setEchoMode(QLineEdit::Password);
+    sk_edit->setPlaceholderText("Access Key Secret");
+    auto *btn_toggle_sk = new QPushButton("显示");
+    btn_toggle_sk->setFixedWidth(44);
+    connect(btn_toggle_sk, &QPushButton::clicked, [sk_edit, btn_toggle_sk]() {
+        bool is_pwd = (sk_edit->echoMode() == QLineEdit::Password);
+        sk_edit->setEchoMode(is_pwd ? QLineEdit::Normal : QLineEdit::Password);
+        btn_toggle_sk->setText(is_pwd ? "隐藏" : "显示");
+    });
+    sk_row->addWidget(sk_edit);
+    sk_row->addWidget(btn_toggle_sk);
+    form_open->addRow("Access Key Secret:", sk_row);
+
+    auto *code_edit = new QLineEdit(QString::fromStdString(cfg_->danmaku.open_live_code));
+    code_edit->setPlaceholderText("主播身份码 (从开始直播或互动应用中心获取)");
+    form_open->addRow("主播身份码 (Code):", code_edit);
+
+    auto update_open_live_enabled = [grp_open_live, mode_combo]() {
+        grp_open_live->setEnabled(mode_combo->currentData().toInt() == 1);
+    };
+    update_open_live_enabled();
+    connect(mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), update_open_live_enabled);
+
+    layout->addWidget(grp_open_live);
+
+    // 3. 显示与过滤设置
+    auto *grp_display = new QGroupBox("弹幕列表展示与过滤");
+    auto *form_disp = new QFormLayout(grp_display);
+
+    auto *chk_medal = new QCheckBox("展示粉丝勋章名称与等级");
+    chk_medal->setChecked(cfg_->danmaku.show_fans_medal);
+    form_disp->addRow(chk_medal);
+
+    auto *chk_guard = new QCheckBox("展示大航海身份图标 (舰长/提督/总督)");
+    chk_guard->setChecked(cfg_->danmaku.show_guard_badge);
+    form_disp->addRow(chk_guard);
+
+    auto *spin_max = new QSpinBox();
+    spin_max->setRange(100, 5000);
+    spin_max->setSingleStep(100);
+    spin_max->setValue(cfg_->danmaku.max_display_count > 0 ? cfg_->danmaku.max_display_count : 1000);
+    form_disp->addRow("最大保留历史条数:", spin_max);
+
+    layout->addWidget(grp_display);
+
+    // 4. 对话框底部按钮
+    auto *btn_box = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+    connect(btn_box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(btn_box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    layout->addWidget(btn_box);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        cfg_->danmaku.mode = mode_combo->currentData().toInt();
+        cfg_->danmaku.open_live_app_id = app_id_edit->text().trimmed().toLongLong();
+        cfg_->danmaku.open_live_access_key = ak_edit->text().trimmed().toStdString();
+        cfg_->danmaku.open_live_secret = sk_edit->text().trimmed().toStdString();
+        cfg_->danmaku.open_live_code = code_edit->text().trimmed().toStdString();
+        cfg_->danmaku.show_fans_medal = chk_medal->isChecked();
+        cfg_->danmaku.show_guard_badge = chk_guard->isChecked();
+        cfg_->danmaku.max_display_count = spin_max->value();
+        cfg_->save();
+
+        status_bar_->setText("弹幕与开放平台设置已保存");
+        start_danmaku();
     }
 }

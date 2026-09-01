@@ -40,6 +40,9 @@ set(SOURCES
   src/bilibili-api.cpp
   src/auth-service.cpp
   src/bili-dock.cpp
+  src/danmaku/danmaku-codec.cpp
+  src/danmaku/danmaku-parser.cpp
+  src/danmaku/open-live-client.cpp
   src/danmaku-ws.cpp
   src/danmaku-display.cpp
   src/tts/tts-cleaner.cpp
@@ -53,6 +56,10 @@ set(HEADERS
   src/bilibili-api.h
   src/auth-service.h
   src/bili-dock.h
+  src/danmaku/danmaku-packet.h
+  src/danmaku/danmaku-codec.h
+  src/danmaku/danmaku-parser.h
+  src/danmaku/open-live-client.h
   src/danmaku-ws.h
   src/danmaku-display.h
   src/tts/tts-types.h

@@ -315,6 +315,18 @@ void ConfigManager::load()
         tts.entry_filter = tj.value("entry_filter", 0);
         tts.merge_enabled = tj.value("merge_enabled", true);
     }
+
+    if (j.contains("danmaku")) {
+        const auto &dj = j["danmaku"];
+        danmaku.mode = dj.value("mode", 1);
+        danmaku.open_live_app_id = dj.value("open_live_app_id", 0LL);
+        danmaku.open_live_access_key = dj.value("open_live_access_key", "");
+        danmaku.open_live_secret = decrypt(dj.value("open_live_secret", ""));
+        danmaku.open_live_code = dj.value("open_live_code", "");
+        danmaku.show_fans_medal = dj.value("show_fans_medal", true);
+        danmaku.show_guard_badge = dj.value("show_guard_badge", true);
+        danmaku.max_display_count = dj.value("max_display_count", 1000);
+    }
 }
 
 void ConfigManager::save()
@@ -345,6 +357,17 @@ void ConfigManager::save()
     tj["entry_filter"] = tts.entry_filter;
     tj["merge_enabled"] = tts.merge_enabled;
     j["tts"] = tj;
+
+    json dj;
+    dj["mode"] = danmaku.mode;
+    dj["open_live_app_id"] = danmaku.open_live_app_id;
+    dj["open_live_access_key"] = danmaku.open_live_access_key;
+    dj["open_live_secret"] = encrypt(danmaku.open_live_secret);
+    dj["open_live_code"] = danmaku.open_live_code;
+    dj["show_fans_medal"] = danmaku.show_fans_medal;
+    dj["show_guard_badge"] = danmaku.show_guard_badge;
+    dj["max_display_count"] = danmaku.max_display_count;
+    j["danmaku"] = dj;
 
     std::string dir = config_dir();
     mkdir(dir.c_str(), 0700);

@@ -4,6 +4,7 @@
 #include <string>
 #include <thread>
 #include <atomic>
+#include <vector>
 #include <QByteArray>
 #include <QMetaType>
 #include <QObject>
@@ -13,12 +14,14 @@
 #include <QSslError>
 
 #include "bilibili-api.h"
+#include "config-manager.h"
+#include "danmaku/danmaku-packet.h"
 
 // ─── 弹幕消息 ───
 struct DanmakuMessage {
-    std::string cmd;           // "DANMU_MSG"
+    std::string cmd;           // "LIVE_OPEN_PLATFORM_DM" 或 "DANMU_MSG"
     std::string username;      // 发送者昵称
-    std::string uid;           // 发送者 UID
+    std::string uid;           // 发送者 UID / OpenID
     std::string message;       // 弹幕文本
     std::string fan_badge;     // 粉丝勋章名（可选）
     int fan_badge_level = 0;   // 粉丝勋章等级
@@ -31,7 +34,7 @@ struct GiftMessage {
     std::string gift_name;     // 礼物名称
     int num = 0;               // 数量
     int combo_num = 0;         // 连送次数（combo）
-    std::string action;        // "赠送" / "续费"
+    std::string action;        // "赠送" / "开通" / "续费"
 };
 
 // ─── SC 醒目留言 ───
@@ -44,7 +47,7 @@ struct SuperChatMessage {
 // ─── 进房与互动消息 ───
 struct EntryMessage {
     std::string username;      // 观众昵称
-    std::string uid;           // 观众 UID
+    std::string uid;           // 观众 UID / OpenID
     int guard_level = 0;       // 大航海等级：0=无，1=总督，2=提督，3=舰长
     std::string medal_name;    // 粉丝勋章名
     int medal_level = 0;       // 粉丝勋章等级
@@ -57,7 +60,7 @@ Q_DECLARE_METATYPE(GiftMessage)
 Q_DECLARE_METATYPE(SuperChatMessage)
 Q_DECLARE_METATYPE(EntryMessage)
 
-// ─── WebSocket 客户端 ───
+// ─── WebSocket 长连接管理客户端 ───
 class DanmakuWebSocket : public QObject {
     Q_OBJECT
 public:
@@ -66,13 +69,13 @@ public:
 
     // 依赖注入
     void set_api(BilibiliApi *api);
+    void set_config(ConfigManager *cfg);
 
-    // 生命周期
+    // 生命周期管理
     void connect_to_room(const std::string &room_id);
     void disconnect_from_room();
     [[nodiscard]] bool is_connected() const;
     [[nodiscard]] int popularity() const;
-
 
 signals:
     void danmaku_received(const DanmakuMessage &msg);
@@ -88,30 +91,28 @@ private slots:
     void on_ws_error(QAbstractSocket::SocketError error);
     void on_ws_ssl_errors(const QList<QSslError> &errors);
     void send_heartbeat();
+    void send_open_http_heartbeat();
     void attempt_reconnect();
 
 private:
-    // 内部方法
     void send_auth_packet();
-    void parse_packet_loop(const QByteArray &buffer, int depth = 0);
-    void process_message(const std::string &json_str);
     void start_heartbeat();
     void stop_heartbeat();
     void start_reconnect();
     void stop_reconnect();
-    QByteArray brotli_decompress(const QByteArray &compressed);
-    QByteArray zlib_decompress(const QByteArray &compressed);
-    static QByteArray build_packet_header(uint32_t packet_len, uint16_t protover,
-                                           uint32_t op, uint32_t seq);
 
-    // 异步 getDanmuInfo：后台线程执行 HTTP，结果通过 Qt 元对象队列回主线程继续连接
+    // 异步连接逻辑
+    void connect_via_web(uint64_t gen, const std::string &room_id);
+    void connect_via_open_live(uint64_t gen);
     void on_danmu_info_ready(uint64_t gen, const ApiResult &res);
 
     // 成员变量
     QWebSocket *ws_ = nullptr;
     QTimer *heartbeat_timer_ = nullptr;
+    QTimer *open_heartbeat_timer_ = nullptr;
     QTimer *reconnect_timer_ = nullptr;
     BilibiliApi *api_ = nullptr;
+    ConfigManager *cfg_ = nullptr;
 
     std::thread fetch_thread_;
 
@@ -120,16 +121,19 @@ private:
     std::string host_;
     int wss_port_ = 443;
 
+    // 官方开放平台特定字段
+    std::string open_game_id_;
+    std::string open_auth_body_;
+
     uint32_t seq_ = 1;
     int popularity_ = 0;
     bool authenticated_ = false;
     bool intentional_disconnect_ = false;
 
-    // 连接代次：每次 connect/disconnect 递增，用于丢弃过期的异步 getDanmuInfo 结果
+    // 连接代次：每次 connect/disconnect 递增
     std::atomic<uint64_t> connect_gen_{0};
 
     int reconnect_attempts_ = 0;
     static constexpr int RECONNECT_BASE_DELAY_MS = 1000;
     static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
-
 };

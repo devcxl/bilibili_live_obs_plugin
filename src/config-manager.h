@@ -45,6 +45,17 @@ struct TtsConfigData {
     bool merge_enabled = true;
 };
 
+struct DanmakuConfigData {
+    int mode = 1;                          // 0: Web 网页端, 1: 开放平台官方直连 (Open Live, 默认推荐)
+    int64_t open_live_app_id = 0;          // 开放平台 App ID
+    std::string open_live_access_key;      // 开放平台 AccessKey ID
+    std::string open_live_secret;          // 开放平台 AccessKey Secret (加密落盘)
+    std::string open_live_code;            // 主播身份码 (Code)
+    bool show_fans_medal = true;           // 是否展示粉丝勋章
+    bool show_guard_badge = true;          // 是否展示大航海标志
+    int max_display_count = 1000;          // 弹幕最大保留条数
+};
+
 class ConfigManager {
 public:
     ConfigManager();
@@ -55,6 +66,7 @@ public:
     std::unordered_map<std::string, UserData> users;
     std::string current_uid;
     TtsConfigData tts;
+    DanmakuConfigData danmaku;
 
     static std::string config_dir();
     static std::string config_path();
