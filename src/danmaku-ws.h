@@ -41,10 +41,21 @@ struct SuperChatMessage {
     int price = 0;             // 金额（人民币，单位：分）
 };
 
+// ─── 进房与互动消息 ───
+struct EntryMessage {
+    std::string username;      // 观众昵称
+    std::string uid;           // 观众 UID
+    int guard_level = 0;       // 大航海等级：0=无，1=总督，2=提督，3=舰长
+    std::string medal_name;    // 粉丝勋章名
+    int medal_level = 0;       // 粉丝勋章等级
+    int msg_type = 1;          // 1: 进入房间, 2: 关注, 3: 分享
+};
+
 // 注册到 Qt 元对象系统（支持跨线程信号/槽值类型传递）
 Q_DECLARE_METATYPE(DanmakuMessage)
 Q_DECLARE_METATYPE(GiftMessage)
 Q_DECLARE_METATYPE(SuperChatMessage)
+Q_DECLARE_METATYPE(EntryMessage)
 
 // ─── WebSocket 客户端 ───
 class DanmakuWebSocket : public QObject {
@@ -67,6 +78,7 @@ signals:
     void danmaku_received(const DanmakuMessage &msg);
     void gift_received(const GiftMessage &msg);
     void super_chat_received(const SuperChatMessage &msg);
+    void entry_received(const EntryMessage &msg);
     void connection_state_changed(bool connected, int popularity);
 
 private slots:
