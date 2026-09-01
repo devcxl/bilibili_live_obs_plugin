@@ -42,13 +42,17 @@ QString TtsCleaner::clean_emojis_and_symbols(const QString &input)
 {
     QString result = input;
 
-    // 1. 去除 B站 官方表情占位符方括号，如 [doge] -> doge 或直接去掉常见无朗读意义表情
-    static const QRegularExpression bili_emoji(R"(\[[^\]]{1,10}\])");
-    result.replace(bili_emoji, "");
+    // 1. 将 B站 官方表情占位符（如 [妙啊]、[打call]、[吃瓜]、[doge]）去除外层方括号，保留表情名称进行自然朗读
+    static const QRegularExpression bili_emoji(R"(\[([^\]]{1,16})\])");
+    result.replace(bili_emoji, " \\1 ");
 
-    // 2. 去除连续的无意义特殊标点符号（如 ~~~~~~, ......., @@@@@）
+    // 2. 去除连续过多的无意义重复特殊标点符号（如 ~~~~~~, ......., @@@@@），压缩为中文逗号停顿
     static const QRegularExpression excessive_symbols(R"([`~!@#$%^&*()_+=\-\[\]{}|\\:;"'<>,.?/·~！@#￥%……&*（）——+={}|【】、：；“”‘’《》，。？]{4,})");
     result.replace(excessive_symbols, "，");
+
+    // 3. 压缩连续的多余空格
+    static const QRegularExpression multi_spaces(R"(\s{2,})");
+    result.replace(multi_spaces, " ");
 
     return result.trimmed();
 }
