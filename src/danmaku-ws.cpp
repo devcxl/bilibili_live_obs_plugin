@@ -57,18 +57,30 @@ int DanmakuWebSocket::popularity() const { return popularity_; }
 
 void DanmakuWebSocket::connect_to_room(const std::string &room_id)
 {
-    std::string saved_room_id = room_id;
-    disconnect_from_room();
+    // 如果当前已经建立连接且已鉴权成功，直接返回，避免破坏正常长连接
+    if (authenticated_) {
+        blog(LOG_INFO, "[danmaku-open] already connected, ignoring connect request");
+        return;
+    }
+    // 如果正在连接中，避免并发重复发起 start_app 请求导致触发 7001 冷却期
+    if (is_connecting_) {
+        blog(LOG_INFO, "[danmaku-open] connection in progress, ignoring duplicate connect request");
+        return;
+    }
 
+    is_connecting_ = true;
     intentional_disconnect_ = false;
-    room_id_ = saved_room_id;
+    room_id_ = room_id;
     uint64_t my_gen = ++connect_gen_;
+
+    stop_heartbeat();
+    stop_reconnect();
 
     if (fetch_thread_.joinable()) {
         fetch_thread_.join();
     }
 
-    blog(LOG_INFO, "[danmaku-open] connecting to Bilibili Open Live platform");
+    blog(LOG_INFO, "[danmaku-open] initiating Open Live official start_app");
     fetch_thread_ = std::thread([this, my_gen]() {
         connect_async(my_gen);
     });
@@ -77,6 +89,7 @@ void DanmakuWebSocket::connect_to_room(const std::string &room_id)
 void DanmakuWebSocket::connect_async(uint64_t gen)
 {
     if (!cfg_) {
+        is_connecting_ = false;
         QMetaObject::invokeMethod(this, [this]() {
             emit connection_state_changed(false, 0);
         }, Qt::QueuedConnection);
@@ -91,16 +104,25 @@ void DanmakuWebSocket::connect_async(uint64_t gen)
     );
 
     QMetaObject::invokeMethod(this, [this, gen, res]() {
-        if (gen != connect_gen_.load() || intentional_disconnect_) return;
+        if (gen != connect_gen_.load() || intentional_disconnect_) {
+            is_connecting_ = false;
+            return;
+        }
 
         if (!res.ok) {
+            is_connecting_ = false;
             blog(LOG_WARNING, "[danmaku-open] start_app failed: %s (code=%d)",
                  res.msg.c_str(), res.code);
             emit connection_state_changed(false, 0);
             if (res.msg.find("参数不完整") != std::string::npos) {
                 return;
             }
-            start_reconnect();
+            // 遇 7001 冷却期错误，等待 5 秒起步退避重试
+            if (res.code == 7001) {
+                start_reconnect(5000);
+            } else {
+                start_reconnect(2000);
+            }
             return;
         }
 
@@ -108,9 +130,10 @@ void DanmakuWebSocket::connect_async(uint64_t gen)
         open_auth_body_ = res.auth_body;
 
         if (res.wss_links.empty()) {
+            is_connecting_ = false;
             blog(LOG_WARNING, "[danmaku-open] no wss_link returned from official open platform");
             emit connection_state_changed(false, 0);
-            start_reconnect();
+            start_reconnect(3000);
             return;
         }
 
@@ -128,6 +151,7 @@ void DanmakuWebSocket::connect_async(uint64_t gen)
 void DanmakuWebSocket::disconnect_from_room()
 {
     intentional_disconnect_ = true;
+    is_connecting_ = false;
     ++connect_gen_;
 
     stop_heartbeat();
@@ -170,6 +194,7 @@ void DanmakuWebSocket::on_ws_disconnected()
 {
     bool was_auth = authenticated_;
     authenticated_ = false;
+    is_connecting_ = false;
     stop_heartbeat();
 
     blog(LOG_INFO, "[danmaku-open] websocket disconnected (intentional=%d)", intentional_disconnect_);
@@ -179,7 +204,7 @@ void DanmakuWebSocket::on_ws_disconnected()
     }
 
     if (!intentional_disconnect_) {
-        start_reconnect();
+        start_reconnect(2000);
     }
 }
 
@@ -302,11 +327,11 @@ void DanmakuWebSocket::send_open_http_heartbeat()
     open_heartbeat_timer_->start(20000);
 }
 
-void DanmakuWebSocket::start_reconnect()
+void DanmakuWebSocket::start_reconnect(int base_delay_ms)
 {
     if (intentional_disconnect_) return;
 
-    int delay = RECONNECT_BASE_DELAY_MS * (1 << std::min(reconnect_attempts_, 5));
+    int delay = base_delay_ms * (1 << std::min(reconnect_attempts_, 4));
     delay = std::min(delay, RECONNECT_MAX_DELAY_MS);
     reconnect_attempts_++;
 

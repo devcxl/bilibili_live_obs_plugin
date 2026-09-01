@@ -763,6 +763,11 @@ void BiliDock::start_danmaku()
 {
     if (!danmaku_ws_ || !danmaku_display_) return;
 
+    if (danmaku_ws_->is_connected()) {
+        danmaku_display_->show();
+        return;
+    }
+
     std::string room_id;
     if (live_) {
         room_id = live_->get_room_id();
@@ -772,11 +777,6 @@ void BiliDock::start_danmaku()
         if (it != cfg_->users.end()) {
             room_id = it->second.roomId;
         }
-    }
-
-    if (room_id.empty()) {
-        danmaku_display_->set_status_text("未获取到房间号", "color: #F28B82; font-size: 11px; padding: 0 4px;");
-        return;
     }
 
     danmaku_display_->set_status_text("[连接中...]", "color: #FFB74D; font-size: 11px; padding: 0 4px;");

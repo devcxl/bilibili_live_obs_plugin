@@ -98,7 +98,7 @@ private:
     void send_auth_packet();
     void start_heartbeat();
     void stop_heartbeat();
-    void start_reconnect();
+    void start_reconnect(int base_delay_ms = 2000);
     void stop_reconnect();
 
     void connect_async(uint64_t gen);
@@ -120,12 +120,12 @@ private:
     uint32_t seq_ = 1;
     int popularity_ = 0;
     bool authenticated_ = false;
+    bool is_connecting_ = false;
     bool intentional_disconnect_ = false;
 
     // 连接代次：每次 connect/disconnect 递增
     std::atomic<uint64_t> connect_gen_{0};
 
     int reconnect_attempts_ = 0;
-    static constexpr int RECONNECT_BASE_DELAY_MS = 1000;
     static constexpr int RECONNECT_MAX_DELAY_MS = 30000;
 };
