@@ -264,7 +264,8 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
                 emit connection_state_changed(true, popularity_);
             }
         } else if (pkt.op == static_cast<uint32_t>(danmaku::OpCode::Message)) {
-            auto event = danmaku::DanmakuParser::parse(pkt.body.toStdString());
+            std::string body_str = pkt.body.toStdString();
+            auto event = danmaku::DanmakuParser::parse(body_str);
             if (event) {
                 switch (event->type) {
                 case danmaku::EventType::Danmaku:
@@ -277,10 +278,18 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
                     emit super_chat_received(event->super_chat);
                     break;
                 case danmaku::EventType::Entry:
+                    blog(LOG_INFO, "[danmaku-open] 捕获进房事件: user=%s guard=%d",
+                         event->entry.username.c_str(), event->entry.guard_level);
                     emit entry_received(event->entry);
                     break;
                 default:
                     break;
+                }
+            } else {
+                // 输出未被 parser 拦截的原始 CMD
+                auto j = json::parse(body_str, nullptr, false);
+                if (!j.is_discarded() && j.contains("cmd")) {
+                    blog(LOG_INFO, "[danmaku-open] 收到未处理官方CMD: %s", j.value("cmd", "").c_str());
                 }
             }
         }

@@ -144,13 +144,26 @@ void TtsManager::on_super_chat_received(const SuperChatMessage &msg)
 
 void TtsManager::on_entry_received(const EntryMessage &msg)
 {
-    if (!config_.enabled || !config_.read_entry) return;
+    if (!config_.enabled) {
+        blog(LOG_INFO, "[TTS-Entry] 忽略进房: TTS 功能未开启");
+        return;
+    }
+    if (!config_.read_entry) {
+        blog(LOG_INFO, "[TTS-Entry] 忽略进房: [朗读进房欢迎] 开关处于关闭状态（可在TTS设置中勾选）");
+        return;
+    }
 
     // 过滤范围判断
     if (config_.entry_filter == TtsEntryFilter::GuardOnly) {
-        if (msg.guard_level <= 0) return; // 非大航海忽略
+        if (msg.guard_level <= 0) {
+            blog(LOG_INFO, "[TTS-Entry] 忽略进房: 当前设置仅大航海播报，用户 %s 不是大航海", msg.username.c_str());
+            return;
+        }
     } else if (config_.entry_filter == TtsEntryFilter::WithMedal) {
-        if (msg.medal_name.empty() && msg.guard_level <= 0) return; // 无勋章且非大航海忽略
+        if (msg.medal_name.empty() && msg.guard_level <= 0) {
+            blog(LOG_INFO, "[TTS-Entry] 忽略进房: 当前设置仅勋章粉丝播报，用户 %s 无勋章", msg.username.c_str());
+            return;
+        }
     }
 
     QString formatted = TtsCleaner::format_entry(

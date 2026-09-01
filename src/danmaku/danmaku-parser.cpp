@@ -24,7 +24,9 @@ std::optional<ParsedEvent> DanmakuParser::parse(const std::string &json_str)
     if (cmd == cmd::GUARD) {
         return parse_open_platform_guard(j);
     }
-    if (cmd == cmd::ENTER_ROOM || cmd == "INTERACT_WORD") {
+    if (cmd == cmd::ENTER_ROOM || cmd == "INTERACT_WORD" ||
+        cmd == "LIVE_OPEN_PLATFORM_INTERACT_WORD" ||
+        cmd == "ENTRY_EFFECT" || cmd == "WELCOME" || cmd == "WELCOME_GUARD") {
         return parse_open_platform_enter_room(j);
     }
 
@@ -128,11 +130,32 @@ std::optional<ParsedEvent> DanmakuParser::parse_open_platform_enter_room(const n
 
     ParsedEvent ev;
     ev.type = EventType::Entry;
-    ev.entry.username = d.value("uname", d.value("nickname", ""));
-    ev.entry.uid = d.value("open_id", "");
-    ev.entry.guard_level = d.value("guard_level", 0);
+
+    std::string uname = d.value("uname", d.value("nickname", d.value("username", "")));
+    if (uname.empty() && d.contains("user_info") && d["user_info"].is_object()) {
+        uname = d["user_info"].value("uname", "");
+    }
+    if (uname.empty() && d.contains("copy_writing")) {
+        std::string cw = d.value("copy_writing", "");
+        auto start = cw.find("<%");
+        auto end = cw.find("%>");
+        if (start != std::string::npos && end != std::string::npos && end > start + 2) {
+            uname = cw.substr(start + 2, end - start - 2);
+        }
+    }
+
+    ev.entry.username = uname;
+    ev.entry.uid = d.value("open_id", d.value("uid", ""));
+    ev.entry.guard_level = d.value("guard_level", d.value("privilege_type", 0));
     ev.entry.medal_name = d.value("fans_medal_name", "");
     ev.entry.medal_level = d.value("fans_medal_level", 0);
+
+    if (d.contains("fans_medal") && d["fans_medal"].is_object()) {
+        const auto &fm = d["fans_medal"];
+        if (ev.entry.medal_name.empty()) ev.entry.medal_name = fm.value("medal_name", "");
+        if (ev.entry.medal_level == 0) ev.entry.medal_level = fm.value("medal_level", 0);
+        if (ev.entry.guard_level == 0) ev.entry.guard_level = fm.value("guard_level", 0);
+    }
     ev.entry.msg_type = d.value("msg_type", 1);
 
     if (ev.entry.username.empty()) return std::nullopt;
