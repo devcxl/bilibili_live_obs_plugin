@@ -124,7 +124,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "B站直播工具 OBS 插件 - 扫码登�
 set(CPACK_PACKAGE_CONTACT "https://github.com/${GITHUB_REPOSITORY}")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "BiliLiveOBS")
 set(CPACK_DEBIAN_PACKAGE_SECTION "video")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "obs-studio (>= 30.0), libqt6widgets6, libqt6network6, libqt6websockets6, libcurl4, libqrencode4, libssl3, libbrotli1")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "obs-studio (>= 30.0), libqt6widgets6, libqt6network6, libqt6websockets6, libqt6multimedia6, libcurl4, libqrencode4, libssl3, libbrotli1")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
 set(CPACK_GENERATOR "DEB")
 set(CPACK_DEB_COMPONENT_INSTALL ON)
