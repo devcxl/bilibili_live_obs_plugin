@@ -64,19 +64,12 @@ static std::string url_encode(const std::string &s)
 
 // ── constructor / destructor ──
 
-BilibiliApi::BilibiliApi()
-{
-    curl_ = curl_easy_init();
-}
-
-BilibiliApi::~BilibiliApi()
-{
-    if (curl_) curl_easy_cleanup(curl_);
-}
+BilibiliApi::BilibiliApi() = default;
+BilibiliApi::~BilibiliApi() = default;
 
 void BilibiliApi::update_cookies(const std::unordered_map<std::string, std::string> &cookies)
 {
-    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+    std::lock_guard<std::mutex> lock(api_mutex_);
     cookie_str_.clear();
     for (auto &[k, v] : cookies) {
         if (!cookie_str_.empty()) cookie_str_ += "; ";
@@ -87,7 +80,7 @@ void BilibiliApi::update_cookies(const std::unordered_map<std::string, std::stri
 
 std::string BilibiliApi::cookie_value(const std::string &name) const
 {
-    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+    std::lock_guard<std::mutex> lock(api_mutex_);
     std::string needle = name + "=";
     size_t pos = 0;
     while ((pos = cookie_str_.find(needle, pos)) != std::string::npos) {
@@ -158,12 +151,16 @@ json BilibiliApi::appsign(json params) const
 ApiResult BilibiliApi::do_request(const std::string &method, const std::string &url,
                                    const json &params, const json &data)
 {
-    // 整个请求过程（含 cookie 读取）持锁，与 update_cookies 互斥
-    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+    std::string cookie_str;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        cookie_str = cookie_str_;
+    }
 
     ApiResult res;
-    if (!curl_) {
-        res.msg = "curl not initialized";
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        res.msg = "curl initialization failed";
         return res;
     }
 
@@ -177,13 +174,13 @@ ApiResult BilibiliApi::do_request(const std::string &method, const std::string &
         full_url += "?" + build_query(params);
     }
 
-    curl_easy_setopt(curl_, CURLOPT_URL, full_url.c_str());
-    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &response_body);
-    curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION, header_cb);
-    curl_easy_setopt(curl_, CURLOPT_HEADERDATA, &resp_cookies);
-    curl_easy_setopt(curl_, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl_, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_URL, full_url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &resp_cookies);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
     // Headers
     struct curl_slist *headers = nullptr;
@@ -196,34 +193,36 @@ ApiResult BilibiliApi::do_request(const std::string &method, const std::string &
     if (method == "POST") {
         if (!data.is_null()) {
             postdata = build_query(data);
-            curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, postdata.c_str());
-            curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, (long)postdata.size());
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.c_str());
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)postdata.size());
         } else {
-            curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, "");
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
         }
         headers = curl_slist_append(headers, "content-type: application/x-www-form-urlencoded; charset=UTF-8");
     } else {
-        curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);
+        curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
     }
 
     // Cookies
-    if (!cookie_str_.empty()) {
-        curl_easy_setopt(curl_, CURLOPT_COOKIE, cookie_str_.c_str());
+    if (!cookie_str.empty()) {
+        curl_easy_setopt(curl, CURLOPT_COOKIE, cookie_str.c_str());
     }
 
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
-    CURLcode cc = curl_easy_perform(curl_);
+    CURLcode cc = curl_easy_perform(curl);
     curl_slist_free_all(headers);
 
     if (cc != CURLE_OK) {
+        curl_easy_cleanup(curl);
         res.code = -1;
         res.msg = curl_easy_strerror(cc);
         return res;
     }
 
     long http_code = 0;
-    curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_cleanup(curl);
 
     try {
         auto j = json::parse(response_body);
@@ -253,7 +252,11 @@ ApiResult BilibiliApi::do_post(const std::string &url, const json &data, const j
 
 bool BilibiliApi::get_wbi_keys(std::string &img_key, std::string &sub_key)
 {
-    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
+    std::string cookie_str;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        cookie_str = cookie_str_;
+    }
 
     CURL *curl = curl_easy_init();
     if (!curl) return false;
@@ -270,8 +273,8 @@ bool BilibiliApi::get_wbi_keys(std::string &img_key, std::string &sub_key)
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, h);
 
     // 携带当前登录态 Cookie
-    if (!cookie_str_.empty()) {
-        curl_easy_setopt(curl, CURLOPT_COOKIE, cookie_str_.c_str());
+    if (!cookie_str.empty()) {
+        curl_easy_setopt(curl, CURLOPT_COOKIE, cookie_str.c_str());
     }
 
     CURLcode cc = curl_easy_perform(curl);
@@ -404,9 +407,6 @@ ApiResult BilibiliApi::get_room_info(const std::string &room_id)
 
 ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
 {
-    // 持锁保护 cookie_str_（buvid3 拼接），递归锁允许内部调用 get_wbi_keys/get_buvid3
-    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
-
     // 2026 规范：getDanmuInfo 需要 WBI 签名 + web_location 参数 + buvid3 cookie
     std::string img_key, sub_key;
     if (!get_wbi_keys(img_key, sub_key)) {
@@ -415,12 +415,19 @@ ApiResult BilibiliApi::get_danmu_info(const std::string &room_id)
         return res;
     }
 
-    if (cookie_str_.find("buvid3") == std::string::npos) {
+    bool need_buvid = false;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        need_buvid = (cookie_str_.find("buvid3") == std::string::npos);
+    }
+
+    if (need_buvid) {
         ApiResult buvid_res = get_buvid3();
         // /x/frontend/finger/spi 返回字段名为 b_3，用作 buvid3 cookie
         if (buvid_res.ok && buvid_res.data.contains("data")
             && buvid_res.data["data"].contains("b_3")) {
             std::string buvid3 = buvid_res.data["data"]["b_3"].get<std::string>();
+            std::lock_guard<std::mutex> lock(api_mutex_);
             if (!cookie_str_.empty()) cookie_str_ += "; ";
             cookie_str_ += "buvid3=" + buvid3;
         }
@@ -441,17 +448,27 @@ ApiResult BilibiliApi::get_area_list()
 
 ApiResult BilibiliApi::update_title(const std::string &room_id, const std::string &title)
 {
+    std::string csrf;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        csrf = csrf_;
+    }
     return do_post("https://api.live.bilibili.com/room/v1/Room/update",
                     json{{"room_id", room_id}, {"platform", "pc_link"},
-                          {"title", title}, {"csrf_token", csrf_}, {"csrf", csrf_}});
+                          {"title", title}, {"csrf_token", csrf}, {"csrf", csrf}});
 }
 
 ApiResult BilibiliApi::update_area(const std::string &room_id, const std::string &area_id)
 {
+    std::string csrf;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        csrf = csrf_;
+    }
     return do_post("https://api.live.bilibili.com/room/v1/Room/update",
                     json{{"room_id", room_id}, {"area_id", area_id},
                           {"platform", "pc_link"},
-                          {"csrf_token", csrf_}, {"csrf", csrf_}});
+                          {"csrf_token", csrf}, {"csrf", csrf}});
 }
 
 ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string &area_id)
@@ -477,10 +494,16 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
         return v_res;
     }
 
+    std::string csrf;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        csrf = csrf_;
+    }
+
     json post_data = appsign(json{
         {"room_id", room_id}, {"platform", "pc_link"},
         {"area_v2", area_id}, {"backup_stream", "0"},
-        {"csrf_token", csrf_}, {"csrf", csrf_},
+        {"csrf_token", csrf}, {"csrf", csrf},
         {"build", v_res.data["data"]["build"]},
         {"version", v_res.data["data"]["curr_version"]},
         {"ts", ts}
@@ -493,9 +516,14 @@ ApiResult BilibiliApi::start_live(const std::string &room_id, const std::string 
 
 ApiResult BilibiliApi::stop_live(const std::string &room_id)
 {
+    std::string csrf;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        csrf = csrf_;
+    }
     return do_post("https://api.live.bilibili.com/room/v1/Room/stopLive",
                     json{{"room_id", room_id}, {"platform", "pc_link"},
-                          {"csrf_token", csrf_}, {"csrf", csrf_}});
+                          {"csrf_token", csrf}, {"csrf", csrf}});
 }
 
 ApiResult BilibiliApi::get_server_time()
@@ -511,7 +539,11 @@ ApiResult BilibiliApi::get_buvid3()
 ApiResult BilibiliApi::logout_session()
 {
     // passport 注销接口：携带 cookie（SESSDATA）+ biliCSRF，使会话服务端失效
-    std::lock_guard<std::recursive_mutex> lock(api_mutex_);
-    json data = {{"biliCSRF", csrf_}};
+    std::string csrf;
+    {
+        std::lock_guard<std::mutex> lock(api_mutex_);
+        csrf = csrf_;
+    }
+    json data = {{"biliCSRF", csrf}};
     return do_post("https://passport.bilibili.com/login/exit/v2", data);
 }
