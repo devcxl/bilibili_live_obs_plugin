@@ -18,6 +18,8 @@ public slots:
     void append_danmaku(const DanmakuMessage &msg);
     void append_gift(const GiftMessage &msg);
     void append_super_chat(const SuperChatMessage &msg);
+    void append_guard(const GuardMessage &msg);
+    void append_like(const LikeMessage &msg);
     void set_popularity(int popularity);
     void set_connected(bool connected);
     void set_status_text(const QString &text, const QString &style = "");

@@ -103,6 +103,30 @@ QString TtsCleaner::format_super_chat(const QString &sender, int price, const QS
     return QString("醒目留言，%1说：%2").arg(s, m);
 }
 
+QString TtsCleaner::format_guard(const QString &sender, int guard_level, int num, const QString &unit)
+{
+    QString s = sender.trimmed();
+    s = strip_urls(s);
+    s = clean_emojis_and_symbols(s);
+    if (s.isEmpty()) s = "贵宾";
+
+    QString g = "舰长";
+    if (guard_level == 1) g = "总督";
+    else if (guard_level == 2) g = "提督";
+
+    QString u = unit.trimmed().isEmpty() ? "月" : unit.trimmed();
+    return QString("恭喜%1荣登%2%3%4，感谢对主播的大力支持！").arg(s, g, QString::number(num), u);
+}
+
+QString TtsCleaner::format_like(const QString &sender, int64_t count)
+{
+    QString s = sender.trimmed();
+    s = strip_urls(s);
+    s = clean_emojis_and_symbols(s);
+    if (s.isEmpty()) s = "观众";
+    return QString("感谢%1的点赞").arg(s);
+}
+
 QString TtsCleaner::format_entry(const QString &sender, int guard_level, const QString &medal_name)
 {
     QString s = sender.trimmed();

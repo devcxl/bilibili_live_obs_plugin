@@ -12,6 +12,8 @@ enum class EventType {
     Danmaku,
     Gift,
     SuperChat,
+    Guard,
+    Like,
     Entry
 };
 
@@ -20,6 +22,8 @@ struct ParsedEvent {
     DanmakuMessage danmaku;
     GiftMessage gift;
     SuperChatMessage super_chat;
+    GuardMessage guard;
+    LikeMessage like;
     EntryMessage entry;
 };
 
@@ -34,6 +38,7 @@ private:
     static std::optional<ParsedEvent> parse_open_platform_gift(const nlohmann::json &j);
     static std::optional<ParsedEvent> parse_open_platform_super_chat(const nlohmann::json &j);
     static std::optional<ParsedEvent> parse_open_platform_guard(const nlohmann::json &j);
+    static std::optional<ParsedEvent> parse_open_platform_like(const nlohmann::json &j);
     static std::optional<ParsedEvent> parse_open_platform_enter_room(const nlohmann::json &j);
 };
 

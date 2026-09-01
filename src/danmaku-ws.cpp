@@ -277,6 +277,16 @@ void DanmakuWebSocket::on_ws_binary_message(const QByteArray &data)
                 case danmaku::EventType::SuperChat:
                     emit super_chat_received(event->super_chat);
                     break;
+                case danmaku::EventType::Guard:
+                    blog(LOG_INFO, "[danmaku-open] 捕获大航海事件: user=%s level=%d num=%d",
+                         event->guard.username.c_str(), event->guard.guard_level, event->guard.guard_num);
+                    emit guard_received(event->guard);
+                    break;
+                case danmaku::EventType::Like:
+                    blog(LOG_INFO, "[danmaku-open] 捕获点赞事件: user=%s count=%lld",
+                         event->like.username.c_str(), static_cast<long long>(event->like.like_count));
+                    emit like_received(event->like);
+                    break;
                 case danmaku::EventType::Entry:
                     blog(LOG_INFO, "[danmaku-open] 捕获进房事件: user=%s guard=%d",
                          event->entry.username.c_str(), event->entry.guard_level);

@@ -89,6 +89,10 @@ void BiliDock::set_danmaku_ws(DanmakuWebSocket *ws)
                 danmaku_display_, &DanmakuDisplay::append_gift);
         connect(ws, &DanmakuWebSocket::super_chat_received,
                 danmaku_display_, &DanmakuDisplay::append_super_chat);
+        connect(ws, &DanmakuWebSocket::guard_received,
+                danmaku_display_, &DanmakuDisplay::append_guard);
+        connect(ws, &DanmakuWebSocket::like_received,
+                danmaku_display_, &DanmakuDisplay::append_like);
         connect(ws, &DanmakuWebSocket::connection_state_changed,
                 this, [this](bool connected, int popularity) {
             danmaku_display_->set_connected(connected);
@@ -105,6 +109,10 @@ void BiliDock::set_danmaku_ws(DanmakuWebSocket *ws)
                 tts_manager_, &TtsManager::on_gift_received);
         connect(ws, &DanmakuWebSocket::super_chat_received,
                 tts_manager_, &TtsManager::on_super_chat_received);
+        connect(ws, &DanmakuWebSocket::guard_received,
+                tts_manager_, &TtsManager::on_guard_received);
+        connect(ws, &DanmakuWebSocket::like_received,
+                tts_manager_, &TtsManager::on_like_received);
         connect(ws, &DanmakuWebSocket::entry_received,
                 tts_manager_, &TtsManager::on_entry_received);
     }
@@ -127,6 +135,8 @@ void BiliDock::set_tts_manager(TtsManager *tts)
         c.read_danmaku = cfg_->tts.read_danmaku;
         c.read_gift = cfg_->tts.read_gift;
         c.read_sc = cfg_->tts.read_sc;
+        c.read_guard = cfg_->tts.read_guard;
+        c.read_like = cfg_->tts.read_like;
         c.read_entry = cfg_->tts.read_entry;
         c.entry_filter = static_cast<TtsEntryFilter>(cfg_->tts.entry_filter);
         c.merge_enabled = cfg_->tts.merge_enabled;
@@ -144,6 +154,10 @@ void BiliDock::set_tts_manager(TtsManager *tts)
                 tts_manager_, &TtsManager::on_gift_received);
         connect(danmaku_ws_, &DanmakuWebSocket::super_chat_received,
                 tts_manager_, &TtsManager::on_super_chat_received);
+        connect(danmaku_ws_, &DanmakuWebSocket::guard_received,
+                tts_manager_, &TtsManager::on_guard_received);
+        connect(danmaku_ws_, &DanmakuWebSocket::like_received,
+                tts_manager_, &TtsManager::on_like_received);
         connect(danmaku_ws_, &DanmakuWebSocket::entry_received,
                 tts_manager_, &TtsManager::on_entry_received);
     }
@@ -1129,8 +1143,12 @@ void BiliDock::open_tts_settings()
     chk_danmaku->setChecked(cfg_->tts.read_danmaku);
     auto *chk_gift = new QCheckBox("朗读礼物送礼");
     chk_gift->setChecked(cfg_->tts.read_gift);
-    auto *chk_sc = new QCheckBox("朗读 SC 醒目留言 (高优先级)");
+    auto *chk_sc = new QCheckBox("朗读 SC 醒目留言");
     chk_sc->setChecked(cfg_->tts.read_sc);
+    auto *chk_guard = new QCheckBox("朗读大航海上舰/开通 (最高优先级)");
+    chk_guard->setChecked(cfg_->tts.read_guard);
+    auto *chk_like = new QCheckBox("朗读点赞感谢");
+    chk_like->setChecked(cfg_->tts.read_like);
 
     auto *entry_row = new QHBoxLayout();
     auto *chk_entry = new QCheckBox("朗读进房欢迎");
@@ -1148,12 +1166,14 @@ void BiliDock::open_tts_settings()
     entry_row->addWidget(entry_filter_combo);
     entry_row->addStretch();
 
-    auto *chk_merge = new QCheckBox("智能合并短弹幕/进房 (节省额度与提升流畅度)");
+    auto *chk_merge = new QCheckBox("智能合并连续短弹幕/点赞/进房 (节省额度与提升流畅度)");
     chk_merge->setChecked(cfg_->tts.merge_enabled);
 
     grp_layout->addWidget(chk_danmaku);
     grp_layout->addWidget(chk_gift);
     grp_layout->addWidget(chk_sc);
+    grp_layout->addWidget(chk_guard);
+    grp_layout->addWidget(chk_like);
     grp_layout->addLayout(entry_row);
     grp_layout->addWidget(chk_merge);
     layout->addWidget(grp_content);
@@ -1198,6 +1218,8 @@ void BiliDock::open_tts_settings()
         cfg_->tts.read_danmaku = chk_danmaku->isChecked();
         cfg_->tts.read_gift = chk_gift->isChecked();
         cfg_->tts.read_sc = chk_sc->isChecked();
+        cfg_->tts.read_guard = chk_guard->isChecked();
+        cfg_->tts.read_like = chk_like->isChecked();
         cfg_->tts.read_entry = chk_entry->isChecked();
         cfg_->tts.entry_filter = entry_filter_combo->currentData().toInt();
         cfg_->tts.merge_enabled = chk_merge->isChecked();
@@ -1214,6 +1236,8 @@ void BiliDock::open_tts_settings()
         c.read_danmaku = cfg_->tts.read_danmaku;
         c.read_gift = cfg_->tts.read_gift;
         c.read_sc = cfg_->tts.read_sc;
+        c.read_guard = cfg_->tts.read_guard;
+        c.read_like = cfg_->tts.read_like;
         c.read_entry = cfg_->tts.read_entry;
         c.entry_filter = static_cast<TtsEntryFilter>(cfg_->tts.entry_filter);
         c.merge_enabled = cfg_->tts.merge_enabled;

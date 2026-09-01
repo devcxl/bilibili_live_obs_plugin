@@ -16,6 +16,12 @@ public:
     // 格式化 SC 醒目留言文本
     static QString format_super_chat(const QString &sender, int price, const QString &message);
 
+    // 格式化大航海开通/上舰播报文本
+    static QString format_guard(const QString &sender, int guard_level, int num, const QString &unit);
+
+    // 格式化点赞播报文本
+    static QString format_like(const QString &sender, int64_t count);
+
     // 格式化进房欢迎文本
     static QString format_entry(const QString &sender, int guard_level, const QString &medal_name);
 

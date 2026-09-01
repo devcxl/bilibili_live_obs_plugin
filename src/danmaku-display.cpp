@@ -168,6 +168,33 @@ void DanmakuDisplay::append_super_chat(const SuperChatMessage &msg)
     trim_items();
 }
 
+void DanmakuDisplay::append_guard(const GuardMessage &msg)
+{
+    QString guard_title = "舰长";
+    if (msg.guard_level == 1) guard_title = "总督";
+    else if (msg.guard_level == 2) guard_title = "提督";
+
+    QString text = QString("<span style=\"color:#FF5252; font-weight:bold;\">[大航海] 恭喜 %1 开通 %2 x%3%4！</span>")
+        .arg(QString::fromStdString(msg.username).toHtmlEscaped(),
+             guard_title,
+             QString::number(msg.guard_num),
+             QString::fromStdString(msg.guard_unit));
+    auto *item = new QListWidgetItem(text);
+    item->setBackground(QColor("#4A2328"));
+    list_widget_->insertItem(0, item);
+    trim_items();
+}
+
+void DanmakuDisplay::append_like(const LikeMessage &msg)
+{
+    QString text = QString("<span style=\"color:#F48FB1;\">[点赞] %1 为主播点赞了 (x%2)</span>")
+        .arg(QString::fromStdString(msg.username).toHtmlEscaped(),
+             QString::number(msg.like_count));
+    auto *item = new QListWidgetItem(text);
+    list_widget_->insertItem(0, item);
+    trim_items();
+}
+
 void DanmakuDisplay::trim_items()
 {
     while (list_widget_->count() > max_visible_) {

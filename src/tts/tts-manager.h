@@ -36,6 +36,8 @@ public slots:
     void on_danmaku_received(const DanmakuMessage &msg);
     void on_gift_received(const GiftMessage &msg);
     void on_super_chat_received(const SuperChatMessage &msg);
+    void on_guard_received(const GuardMessage &msg);
+    void on_like_received(const LikeMessage &msg);
     void on_entry_received(const EntryMessage &msg);
 
 signals:

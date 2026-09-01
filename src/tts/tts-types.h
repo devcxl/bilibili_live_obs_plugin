@@ -5,10 +5,12 @@
 #include <cstdint>
 
 enum class TtsPriority {
-    Entry = 0,    // 进房欢迎（最低优先级）
-    Normal = 1,   // 普通弹幕
-    Gift = 2,     // 礼物消息
-    SuperChat = 3 // SC 醒目留言（最高优先级）
+    Like = 0,     // 点赞（最低优先级）
+    Entry = 1,    // 进房欢迎
+    Normal = 2,   // 普通弹幕
+    Gift = 3,     // 礼物消息
+    SuperChat = 4,// SC 醒目留言
+    Guard = 5     // 大航海开通/上舰（最高优先级）
 };
 
 enum class TtsEntryFilter {
@@ -44,7 +46,9 @@ struct TtsConfig {
     bool read_danmaku = true;
     bool read_gift = true;
     bool read_sc = true;
-    bool read_entry = false;
+    bool read_guard = true;
+    bool read_like = false;
+    bool read_entry = true;
     TtsEntryFilter entry_filter = TtsEntryFilter::All;
     bool merge_enabled = true;
 

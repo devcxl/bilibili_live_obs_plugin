@@ -142,6 +142,51 @@ void TtsManager::on_super_chat_received(const SuperChatMessage &msg)
     enqueue_message(item);
 }
 
+void TtsManager::on_guard_received(const GuardMessage &msg)
+{
+    if (!config_.enabled || !config_.read_guard) return;
+
+    QString formatted = TtsCleaner::format_guard(
+        QString::fromStdString(msg.username),
+        msg.guard_level,
+        msg.guard_num,
+        QString::fromStdString(msg.guard_unit)
+    );
+    if (formatted.isEmpty()) return;
+
+    blog(LOG_INFO, "[TTS-Guard] 大航海播报入队: user=%s guard=%d text=%s",
+         msg.username.c_str(), msg.guard_level, formatted.toUtf8().constData());
+
+    TtsMessage item;
+    item.id = next_id_++;
+    item.priority = TtsPriority::Guard;
+    item.text = formatted;
+    item.sender = QString::fromStdString(msg.username);
+    item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
+
+    enqueue_message(item);
+}
+
+void TtsManager::on_like_received(const LikeMessage &msg)
+{
+    if (!config_.enabled || !config_.read_like) return;
+
+    QString formatted = TtsCleaner::format_like(
+        QString::fromStdString(msg.username),
+        msg.like_count
+    );
+    if (formatted.isEmpty()) return;
+
+    TtsMessage item;
+    item.id = next_id_++;
+    item.priority = TtsPriority::Like;
+    item.text = formatted;
+    item.sender = QString::fromStdString(msg.username);
+    item.timestamp_ms = QDateTime::currentMSecsSinceEpoch();
+
+    enqueue_message(item);
+}
+
 void TtsManager::on_entry_received(const EntryMessage &msg)
 {
     if (!config_.enabled) {
@@ -189,48 +234,28 @@ void TtsManager::on_entry_received(const EntryMessage &msg)
 void TtsManager::enqueue_message(const TtsMessage &msg)
 {
     if (queue_.size() >= MAX_QUEUE_SIZE) {
-        // 队列达到 1000 上限时：优先淘汰队尾最老的 Entry，其次 Normal，确保 SC 和礼物不丢失
+        // 队列达到 1000 上限时：优先淘汰最低优先级的项（Like -> Entry -> Normal）
         bool removed = false;
-        for (auto it = queue_.rbegin(); it != queue_.rend(); ++it) {
-            if (it->priority == TtsPriority::Entry) {
-                queue_.erase(std::next(it).base());
-                removed = true;
-                break;
-            }
-        }
-        if (!removed) {
+        for (int p = static_cast<int>(TtsPriority::Like); p <= static_cast<int>(TtsPriority::Normal); ++p) {
             for (auto it = queue_.rbegin(); it != queue_.rend(); ++it) {
-                if (it->priority == TtsPriority::Normal) {
+                if (static_cast<int>(it->priority) == p) {
                     queue_.erase(std::next(it).base());
                     removed = true;
                     break;
                 }
             }
+            if (removed) break;
         }
         if (!removed) {
             queue_.pop_front();
         }
     }
 
-    // 按优先级插入：SC (3) > Gift (2) > Normal (1) > Entry (0)
-    if (msg.priority == TtsPriority::SuperChat) {
-        auto it = std::find_if(queue_.begin(), queue_.end(), [](const TtsMessage &m) {
-            return m.priority < TtsPriority::SuperChat;
-        });
-        queue_.insert(it, msg);
-    } else if (msg.priority == TtsPriority::Gift) {
-        auto it = std::find_if(queue_.begin(), queue_.end(), [](const TtsMessage &m) {
-            return m.priority < TtsPriority::Gift;
-        });
-        queue_.insert(it, msg);
-    } else if (msg.priority == TtsPriority::Normal) {
-        auto it = std::find_if(queue_.begin(), queue_.end(), [](const TtsMessage &m) {
-            return m.priority < TtsPriority::Normal;
-        });
-        queue_.insert(it, msg);
-    } else {
-        queue_.push_back(msg);
-    }
+    // 按优先级插入：Guard (5) > SuperChat (4) > Gift (3) > Normal (2) > Entry (1) > Like (0)
+    auto it = std::find_if(queue_.begin(), queue_.end(), [&](const TtsMessage &m) {
+        return m.priority < msg.priority;
+    });
+    queue_.insert(it, msg);
 
     emit queue_size_changed(queue_.size());
     process_queue();
@@ -251,26 +276,37 @@ void TtsManager::process_queue()
 
     QString text_to_speak;
 
-    if (first.priority == TtsPriority::Normal && config_.merge_enabled && !queue_.empty()) {
-        // 尝试批量合并紧接着的连续普通弹幕（最多 4 条，总长度 ≤ 100 字）
-        std::vector<TtsMessage> batch;
-        batch.push_back(first);
-
-        while (!queue_.empty() && queue_.front().priority == TtsPriority::Normal && batch.size() < 4) {
-            batch.push_back(queue_.front());
-            queue_.pop_front();
+    if (config_.merge_enabled && !queue_.empty()) {
+        if (first.priority == TtsPriority::Normal) {
+            // 合并连续普通弹幕（最多 4 条，总长度 ≤ 100 字）
+            std::vector<TtsMessage> batch;
+            batch.push_back(first);
+            while (!queue_.empty() && queue_.front().priority == TtsPriority::Normal && batch.size() < 4) {
+                batch.push_back(queue_.front());
+                queue_.pop_front();
+            }
+            text_to_speak = TtsCleaner::merge_messages(batch, 100);
+        } else if (first.priority == TtsPriority::Entry) {
+            // 合并连续进房消息（最多 3 条）
+            std::vector<TtsMessage> batch;
+            batch.push_back(first);
+            while (!queue_.empty() && queue_.front().priority == TtsPriority::Entry && batch.size() < 3) {
+                batch.push_back(queue_.front());
+                queue_.pop_front();
+            }
+            text_to_speak = TtsCleaner::merge_messages(batch, 80);
+        } else if (first.priority == TtsPriority::Like) {
+            // 合并连续点赞消息（最多 4 条）
+            std::vector<TtsMessage> batch;
+            batch.push_back(first);
+            while (!queue_.empty() && queue_.front().priority == TtsPriority::Like && batch.size() < 4) {
+                batch.push_back(queue_.front());
+                queue_.pop_front();
+            }
+            text_to_speak = TtsCleaner::merge_messages(batch, 60);
+        } else {
+            text_to_speak = first.text;
         }
-        text_to_speak = TtsCleaner::merge_messages(batch, 100);
-    } else if (first.priority == TtsPriority::Entry && config_.merge_enabled && !queue_.empty()) {
-        // 尝试批量合并紧接着的连续进房消息（最多 3 条）
-        std::vector<TtsMessage> batch;
-        batch.push_back(first);
-
-        while (!queue_.empty() && queue_.front().priority == TtsPriority::Entry && batch.size() < 3) {
-            batch.push_back(queue_.front());
-            queue_.pop_front();
-        }
-        text_to_speak = TtsCleaner::merge_messages(batch, 80);
     } else {
         text_to_speak = first.text;
     }
