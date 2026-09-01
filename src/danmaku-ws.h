@@ -2,7 +2,8 @@
 
 #include <cstdint>
 #include <string>
-#include <future>
+#include <thread>
+#include <atomic>
 #include <QByteArray>
 #include <QMetaType>
 #include <QObject>
@@ -90,8 +91,7 @@ private:
     static QByteArray build_packet_header(uint32_t packet_len, uint16_t protover,
                                            uint32_t op, uint32_t seq);
 
-    // 异步 getDanmuInfo：后台线程执行 HTTP，结果回主线程继续连接
-    void poll_danmu_info_future(std::future<ApiResult> future, uint64_t gen);
+    // 异步 getDanmuInfo：后台线程执行 HTTP，结果通过 Qt 元对象队列回主线程继续连接
     void on_danmu_info_ready(uint64_t gen, const ApiResult &res);
 
     // 成员变量
@@ -99,6 +99,8 @@ private:
     QTimer *heartbeat_timer_ = nullptr;
     QTimer *reconnect_timer_ = nullptr;
     BilibiliApi *api_ = nullptr;
+
+    std::thread fetch_thread_;
 
     std::string room_id_;
     std::string token_;
@@ -111,7 +113,7 @@ private:
     bool intentional_disconnect_ = false;
 
     // 连接代次：每次 connect/disconnect 递增，用于丢弃过期的异步 getDanmuInfo 结果
-    uint64_t connect_gen_ = 0;
+    std::atomic<uint64_t> connect_gen_{0};
 
     int reconnect_attempts_ = 0;
     static constexpr int RECONNECT_BASE_DELAY_MS = 1000;
