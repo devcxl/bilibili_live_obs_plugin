@@ -51,6 +51,7 @@ private slots:
 
 private:
     void init_ui();
+    void reset_upper_height();   // 内容变化后重新锁定上部设置区高度
     void set_logged_out();
     void hide_login_ui();
     void set_login_error(const QString &msg);
@@ -105,6 +106,8 @@ private:
     QComboBox *stream_route_combo_;
 
     QLabel *status_bar_;
+
+    QWidget *upper_ = nullptr;   // 上部设置区容器（固定高度，不随 QSplitter 拖拽变化）
 
     std::unordered_map<std::string, std::vector<std::string>> partition_cache_;
     std::string primary_rtmp_addr_;
