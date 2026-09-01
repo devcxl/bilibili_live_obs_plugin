@@ -93,6 +93,8 @@ void BiliDock::set_danmaku_ws(DanmakuWebSocket *ws)
             danmaku_display_->set_connected(connected);
             danmaku_display_->set_popularity(popularity);
         });
+        connect(danmaku_display_, &DanmakuDisplay::reconnect_requested,
+                this, &BiliDock::start_danmaku);
     }
 
     if (tts_manager_) {
@@ -749,14 +751,29 @@ void BiliDock::restore_live_state()
     }
 }
 
-// 发起弹幕连接：开播时 / 恢复开播时自动调用
+// 发起弹幕连接：开播时 / 恢复开播 / 登录完成 / 手动点击重连时调用
 void BiliDock::start_danmaku()
 {
-    if (!danmaku_ws_ || !danmaku_display_ || !live_) return;
-    std::string room_id = live_->get_room_id();
-    if (room_id.empty()) return;
+    if (!danmaku_ws_ || !danmaku_display_) return;
+
+    std::string room_id;
+    if (live_) {
+        room_id = live_->get_room_id();
+    }
+    if (room_id.empty() && cfg_ && !cfg_->current_uid.empty()) {
+        auto it = cfg_->users.find(cfg_->current_uid);
+        if (it != cfg_->users.end()) {
+            room_id = it->second.roomId;
+        }
+    }
+
+    if (room_id.empty()) {
+        danmaku_display_->set_status_text("❌ 未获取到房间号", "color: #F28B82; font-size: 11px; padding: 0 4px;");
+        return;
+    }
+
+    danmaku_display_->set_status_text("🟡 正在连接...", "color: #FFB74D; font-size: 11px; padding: 0 4px;");
     danmaku_ws_->connect_to_room(room_id);
-    danmaku_display_->clear_all();
     danmaku_display_->show();
 }
 

@@ -67,10 +67,20 @@ DanmakuDisplay::DanmakuDisplay(QWidget *parent)
 
     // ── 状态栏 ──
     auto *status_row = new QHBoxLayout();
-    status_label_ = new QLabel("已断开");
+    status_label_ = new QLabel("⚪ 已断开");
     status_label_->setStyleSheet(
         "color: #888; font-size: 11px; padding: 0 4px;");
     status_row->addWidget(status_label_);
+
+    btn_reconnect_ = new QPushButton("🔄 重连");
+    btn_reconnect_->setToolTip("重新连接直播间弹幕服务");
+    btn_reconnect_->setFixedWidth(54);
+    btn_reconnect_->setStyleSheet("QPushButton { padding: 1px 4px; font-size: 11px; }");
+    connect(btn_reconnect_, &QPushButton::clicked, this, [this]() {
+        set_status_text("🟡 正在连接...", "color: #FFB74D; font-size: 11px; padding: 0 4px;");
+        emit reconnect_requested();
+    });
+    status_row->addWidget(btn_reconnect_);
 
     status_row->addStretch();
 
@@ -180,13 +190,21 @@ void DanmakuDisplay::set_popularity(int popularity)
 void DanmakuDisplay::set_connected(bool connected)
 {
     if (connected) {
-        status_label_->setText("已连接");
+        status_label_->setText("🟢 已连接");
         status_label_->setStyleSheet(
-            "color: #4CAF50; font-size: 11px; padding: 0 4px;");
+            "color: #81C784; font-size: 11px; padding: 0 4px; font-weight: bold;");
     } else {
-        status_label_->setText("已断开");
+        status_label_->setText("⚪ 已断开");
         status_label_->setStyleSheet(
             "color: #888; font-size: 11px; padding: 0 4px;");
+    }
+}
+
+void DanmakuDisplay::set_status_text(const QString &text, const QString &style)
+{
+    status_label_->setText(text);
+    if (!style.isEmpty()) {
+        status_label_->setStyleSheet(style);
     }
 }
 
