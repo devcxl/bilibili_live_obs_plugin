@@ -107,6 +107,9 @@ void DanmakuWebSocket::connect_via_open_live(uint64_t gen)
             blog(LOG_WARNING, "[danmaku-open] start_app failed: %s (code=%d)",
                  res.msg.c_str(), res.code);
             emit connection_state_changed(false, 0);
+            if (res.msg.find("参数不完整") != std::string::npos) {
+                return;
+            }
             start_reconnect();
             return;
         }
