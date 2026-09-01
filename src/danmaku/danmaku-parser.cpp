@@ -27,7 +27,8 @@ std::optional<ParsedEvent> DanmakuParser::parse(const std::string &json_str)
     if (cmd == cmd::LIKE) {
         return parse_open_platform_like(j);
     }
-    if (cmd == cmd::ENTER_ROOM || cmd == "INTERACT_WORD" ||
+    if (cmd == cmd::ENTER_ROOM || cmd == "LIVE_OPEN_PLATFORM_LIVE_ROOM_ENTER" ||
+        cmd == "LIVE_OPEN_PLATFORM_ENTER_ROOM" || cmd == "INTERACT_WORD" ||
         cmd == "LIVE_OPEN_PLATFORM_INTERACT_WORD" ||
         cmd == "ENTRY_EFFECT" || cmd == "WELCOME" || cmd == "WELCOME_GUARD") {
         return parse_open_platform_enter_room(j);

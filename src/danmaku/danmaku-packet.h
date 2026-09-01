@@ -34,7 +34,7 @@ namespace cmd {
     inline constexpr const char *SUPER_CHAT_DEL  = "LIVE_OPEN_PLATFORM_SUPER_CHAT_DEL";
     inline constexpr const char *GUARD           = "LIVE_OPEN_PLATFORM_GUARD";
     inline constexpr const char *LIKE            = "LIVE_OPEN_PLATFORM_LIKE";
-    inline constexpr const char *ENTER_ROOM      = "LIVE_OPEN_PLATFORM_ENTER_ROOM";
+    inline constexpr const char *ENTER_ROOM      = "LIVE_OPEN_PLATFORM_LIVE_ROOM_ENTER";
     inline constexpr const char *LIVE_START      = "LIVE_OPEN_PLATFORM_LIVE";
     inline constexpr const char *LIVE_END        = "LIVE_OPEN_PLATFORM_LIVE_OFF";
 }

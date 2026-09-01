@@ -123,7 +123,10 @@ void AzureTtsBackend::on_reply_finished()
     int status = current_reply_->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     bool success = (current_reply_->error() == QNetworkReply::NoError && status == 200);
 
-    QByteArray last_chunk = current_reply_->readAll();
+    QByteArray last_chunk;
+    if (current_reply_->isOpen() && current_reply_->isReadable()) {
+        last_chunk = current_reply_->readAll();
+    }
     if (!last_chunk.isEmpty()) {
         pcm_buffer_.append(last_chunk);
         if (success) {
